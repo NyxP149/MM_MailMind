@@ -43,6 +43,14 @@ Complétez ensuite `backend/.env`, puis lancez les deux applications :
 npm run dev
 ```
 
+Sous Windows, vous pouvez aussi lancer directement :
+
+```powershell
+.\start-mailmind.ps1
+```
+
+Gardez ce terminal ouvert pendant l’utilisation de MailMind. Fermer le terminal arrête les serveurs locaux et rend `localhost:5173` inaccessible.
+
 - Interface : http://localhost:5173
 - API : http://localhost:3000/api/health
 
@@ -96,4 +104,3 @@ Les appels Gmail passent exclusivement par le backend. Le frontend ne reçoit ja
 ## Roadmap
 
 La suite prévue : classification par règles et quarantaine (V2), tableau de bord (V3), règles personnalisées (V4), puis intelligence artificielle et apprentissage progressif. Toute action destructive restera désactivée tant qu’elle n’aura pas de validation explicite et de mécanisme de récupération.
-
