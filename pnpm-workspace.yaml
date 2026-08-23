@@ -1,0 +1,7 @@
+packages:
+  - backend
+  - frontend
+
+confirmModulesPurge: false
+allowBuilds:
+  esbuild: true
