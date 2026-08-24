@@ -1,6 +1,14 @@
 # MailMind — Guide d’implémentation
 
-Ce document décrit l’implémentation actuellement présente dans le dépôt. Il sert de référence aux personnes qui développent, testent ou maintiennent MailMind. La version actuelle est une V1 personnelle, locale et strictement en lecture seule.
+> Mise à jour V2 : classification, validation humaine, mesure de qualité et quarantaine Gmail réversible.
+
+> Mise à jour V3 : tableau de bord agrégé et historique local minimisé.
+
+> Mise à jour V4 : moteur et éditeur de règles personnalisées locales.
+
+> Mise à jour V5 : service OpenAI optionnel et vue d'analyse IA avec consentement unitaire.
+
+Ce document décrit l’implémentation actuellement présente dans le dépôt. Il sert de référence aux personnes qui développent, testent ou maintiennent MailMind. La version actuelle reste personnelle et locale ; elle lit Gmail et peut uniquement ajouter ou retirer son label de quarantaine après confirmation.
 
 ## 1. Vue d’ensemble technique
 
@@ -10,6 +18,67 @@ MailMind est organisé en deux espaces npm :
 - `frontend/` : application React construite avec Vite et rendue installable comme PWA.
 
 Le navigateur ne contacte jamais Gmail directement. Il appelle le backend, qui détient le client OAuth et transforme les réponses Gmail en objets minimaux adaptés à l’interface. Il n’existe actuellement ni base de données ni stockage persistant : les jetons OAuth et l’état de connexion vivent uniquement dans la mémoire du processus backend.
+
+## Implémentation de la classification V2
+
+`backend/src/classifier.js` contient les règles pondérées et deux fonctions publiques :
+
+- `classifyEmail(email)` produit `{ id, label, confidence, action, reasons }` ;
+- `summarizeClassifications(messages)` agrège les catégories et recommandations de la page analysée.
+
+`normalizeMessage()` appelle le classificateur après avoir réduit la réponse Gmail au modèle utilisé par l’interface. La réponse de `GET /api/emails` contient ainsi une propriété `classification` par message et une propriété `summary` au niveau de la page.
+
+Le frontend expose trois vues dans `App.jsx` : boîte de réception, catégories et quarantaine virtuelle. `ClassificationOverview.jsx` calcule les indicateurs visibles et les filtres, tandis que `EmailRow.jsx` affiche le badge, le score et les motifs dans son infobulle. Les filtres portent uniquement sur les messages déjà chargés depuis Gmail.
+
+Les règles doivent rester explicables et testées. Toute nouvelle règle doit ajouter au moins un cas positif et, lorsque le risque de collision est élevé, un cas négatif dans `backend/src/classifier.test.js`.
+
+### Corrections et décisions locales
+
+`frontend/src/classification.js` définit le référentiel des catégories et applique les corrections manuelles. Deux espaces de noms `localStorage` sont utilisés :
+
+- `mailmind:classification-overrides:v1` pour les catégories corrigées ;
+- `mailmind:quarantine-decisions:v1` pour les confirmations et faux positifs.
+
+Les corrections reçoivent une confiance de 100 %, le motif « Catégorie corrigée manuellement » et alimentent immédiatement les compteurs. Un faux positif est retiré de la vue Quarantaine sans modifier Gmail. Une confirmation reste visible et peut être annulée. Le module dispose de tests unitaires dédiés dans `frontend/src/classification.test.js`.
+
+### Scanner paginé
+
+`api.getEmails(pageToken, limit)` accepte désormais une taille bornée entre 1 et 50. `scanMailbox()` dans `App.jsx` enchaîne les pages jusqu’à la cible choisie (50, 100 ou 250), met à jour l’interface après chaque réponse et conserve le prochain `pageToken`. `mergeEmails()` déduplique les résultats par identifiant Gmail et possède un test unitaire. Une erreur interrompt proprement le scan tout en conservant les messages déjà reçus.
+
+### Tableau Qualité et export
+
+`computeQualityMetrics()` calcule les métriques à partir des classifications effectives, des décisions et des corrections. `QualityDashboard.jsx` affiche les agrégats et le détail par catégorie. La précision vaut `confirmés / décisions rendues` et la couverture vaut `décisions rendues / suggestions de quarantaine`.
+
+L’export est créé dans le navigateur avec `Blob` et `URL.createObjectURL`. Chaque enregistrement contient uniquement `automaticCategory`, `correctedCategory` et `decision`. Aucun identifiant de message ni texte Gmail n’est sérialisé.
+
+### Quarantaine Gmail réversible
+
+`backend/src/gmail-actions.js` gère le label `MailMind/Quarantine`. Il recherche d’abord un label existant, le crée si nécessaire, puis utilise `users.messages.modify` uniquement avec `addLabelIds` ou `removeLabelIds`.
+
+- `POST /api/emails/:id/quarantine` exige l’en-tête `X-MailMind-Confirm: quarantine` ;
+- `POST /api/emails/:id/restore` exige `X-MailMind-Confirm: restore` ;
+- `GET /api/audit` expose les 100 dernières actions de la session en mémoire.
+
+Les identifiants Gmail sont validés avant tout appel. Le frontend affiche en plus une boîte de confirmation native. Aucun endpoint n’appelle `trash`, `untrash`, `delete`, `batchDelete`, `send` ou une modification du contenu.
+
+## Implémentation du tableau de bord V3
+
+`computeDashboardMetrics()` agrège les messages effectifs, décisions et événements d’action. `Dashboard.jsx` rend les indicateurs, les barres de catégories et les huit événements les plus récents sans bibliothèque graphique externe.
+
+Les événements sont stockés sous `mailmind:action-history:v1` dans `localStorage`, avec une limite de 100 entrées. Ils contiennent le type d’action, l’horodatage et la catégorie uniquement. L’estimation du temps utilise la formule `(validations × 12 + actions Gmail × 8) / 60`, arrondie à la minute.
+
+## Implémentation des règles V4
+
+`applyCustomRules()` évalue les règles actives sur les champs normalisés du message. La propriété `classification` produite reçoit une confiance de 100 %, un motif explicable, `customRule: true` et l’identifiant de règle. `App.jsx` applique ensuite les corrections manuelles, qui restent prioritaires.
+
+`RulesManager.jsx` gère la création, l’activation et la suppression. Les règles sont stockées sous `mailmind:custom-rules:v1` dans `localStorage`. Elles ne contiennent que le champ, l’opérateur, la valeur recherchée, la catégorie, l’état et l’horodatage de création.
+
+## Implémentation de l'assistant V5
+
+`backend/src/ai.js` assure la minimisation, l'appel à l'API Responses et l'extraction de la sortie structurée. Le backend utilise `OPENAI_API_KEY`, fixe `store: false`, borne les textes, impose un schéma JSON strict et traite le contenu de l'e-mail comme une donnée non fiable. La route `POST /api/ai/analyze` exige une connexion Gmail, une configuration IA active et l'en-tête explicite `X-MailMind-AI-Consent: analyze`.
+
+Le frontend envoie uniquement `subject`, `senderDomain`, `snippet` et `ruleSuggestion`. `AIAssistant.jsx` montre ces valeurs avant l'envoi, exige une case de consentement et présente séparément le résultat. Le composant ne reçoit aucun callback de mutation Gmail et ne peut donc exécuter ni quarantaine, ni restauration, ni suppression.
+
 
 ```text
 Navigateur React
@@ -148,7 +217,7 @@ Un seul objet `OAuth2` et un booléen `connected` sont créés dans la fermeture
 2. Le backend vérifie que la configuration OAuth est complète.
 3. Il génère un `state` cryptographiquement aléatoire de 32 octets.
 4. Il conserve ce `state` dix minutes dans le cookie signé, HTTP-only et `SameSite=Lax` `mailmind_oauth_state`.
-5. Il redirige vers Google avec `access_type=offline`, `prompt=consent` et l’unique scope `gmail.readonly`.
+5. Il redirige vers Google avec `access_type=offline`, `prompt=consent` et l’unique scope `gmail.modify`.
 6. Google revient sur `GET /api/auth/google/callback`.
 7. Le backend efface le cookie puis compare le `state` reçu à sa valeur signée. Une différence entraîne une redirection frontend avec `?auth=invalid_state`.
 8. En présence d’un code, le backend l’échange contre des jetons et les place uniquement dans le client OAuth en mémoire.
@@ -166,6 +235,7 @@ Le client Google émet aussi un événement `tokens`; celui-ci maintient le drap
 | `GET /api/auth/google/callback` | Valide le retour Google et mémorise les jetons. |
 | `POST /api/auth/logout` | Révoque les identifiants si possible, puis vide toujours l’état local. |
 | `GET /api/emails` | Retourne une page de messages normalisés ; accepte `limit` et `pageToken`. |
+| `POST /api/ai/analyze` | Analyse un message minimisé après consentement explicite ; ne modifie pas Gmail. |
 
 Les erreurs API ont la forme `{ "error": { "code": "…", "message": "…" } }`. Une route inconnue renvoie `404/NOT_FOUND`, une lecture sans connexion `401/NOT_CONNECTED`, et une erreur Gmail `502/GMAIL_ERROR`.
 
@@ -203,9 +273,11 @@ Le sujet absent devient `(Sans objet)` et `unread` est dérivé du label `UNREAD
 
 `App.jsx` porte actuellement l’état global sans bibliothèque supplémentaire : statut OAuth, messages, pagination, chargements, erreur, recherche et ouverture de la barre latérale. Au montage, l’application interprète le paramètre de retour OAuth, nettoie l’URL, demande le statut puis charge les messages lorsque le compte est connecté.
 
+Le thème est également piloté par `App.jsx`. `theme.js` résout le choix entre la valeur locale `mailmind:theme:v1` et la préférence système `prefers-color-scheme`. Le document reçoit l'attribut `data-theme`, utilisé par les variantes CSS, ainsi qu'une couleur de navigateur adaptée. Un court script dans `index.html` applique ce choix avant React pour éviter un flash du thème clair. Aucune dépendance ni donnée serveur n'est nécessaire.
+
 La recherche concatène sujet, nom, adresse et extrait, puis filtre en minuscules. Elle porte uniquement sur les messages déjà chargés dans le navigateur ; ce n’est pas une recherche Gmail distante. La pagination ajoute chaque nouvelle page au tableau courant et le bouton disparaît durant une recherche locale.
 
-Les composants `Brand`, `EmailRow` et `EmptyState` restent essentiellement visuels. `utils.js` isole la mise en forme des dates en français et le calcul des initiales. Certaines commandes visibles dans l’interface (favori, notifications, réglages, archives, catégories, assistant) sont encore décoratives ou annoncées « Bientôt ».
+Les composants `Brand`, `EmailRow` et `EmptyState` restent essentiellement visuels. `utils.js` isole la mise en forme des dates en français et le calcul des initiales. Certaines commandes visibles dans l’interface (favori, notifications, réglages et archives) sont encore décoratives.
 
 ## 8. Commandes utiles
 
@@ -227,7 +299,7 @@ Les composants `Brand`, `EmailRow` et `EmptyState` restent essentiellement visue
 
 Le backend utilise le runner natif `node:test` avec `node:assert/strict`. Les tests actuels couvrent la recherche insensible à la casse des en-têtes, l’analyse d’une adresse expéditeur et la normalisation sûre d’un message Gmail.
 
-Le frontend utilise Vitest, jsdom et Testing Library. `src/test/setup.js` active les assertions `jest-dom`. Les tests actuels couvrent les initiales et le formatage d’une date du jour.
+Le frontend utilise Vitest, jsdom et Testing Library. `src/test/setup.js` active les assertions `jest-dom`. Les tests couvrent notamment les utilitaires d'affichage, le moteur de classification et la résolution du thème mémorisé ou système.
 
 Avant toute livraison :
 
@@ -249,7 +321,7 @@ Lors de l’ajout d’une fonction pure, placez de préférence son test à côt
 - Gardez les routes et les middleware dans `backend/src/app.js`; gardez `server.js` limité au démarrage du serveur.
 - Retournez des erreurs API stables avec un code machine et un message français destiné à l’utilisateur.
 - Ne transmettez jamais les jetons Google au frontend et ne journalisez ni secrets, ni codes d’autorisation, ni contenu d’e-mail.
-- Limitez les scopes Google au strict nécessaire. Toute extension au-delà de `gmail.readonly` doit faire l’objet d’une décision explicite, de tests de sécurité et d’une interface de confirmation adaptée.
+- Conservez `gmail.modify` comme plafond. Toute nouvelle mutation doit faire l’objet d’une décision explicite, de tests de sécurité et d’une interface de confirmation adaptée.
 - Préservez l’accessibilité : libellés `aria-label`, rôles d’état/alerte, éléments HTML sémantiques et navigation clavier.
 - Ajoutez ou adaptez les tests avec chaque comportement métier.
 
@@ -275,6 +347,6 @@ Il n’existe actuellement ni ESLint ni Prettier configuré. Ne lancez donc pas 
 - La recherche est locale et limitée aux pages déjà récupérées.
 - Chaque page peut provoquer jusqu’à 51 appels Gmail (une liste puis jusqu’à 50 détails), sans contrôle de concurrence ni reprise partielle.
 - L’API est conçue pour le développement local ; une mise en production exige notamment HTTPS, stockage chiffré des jetons, sessions par utilisateur, rotation des secrets, politique d’accès, supervision et stratégie de déploiement.
-- La V1 ne possède aucune route de modification, suppression, archivage ou labellisation Gmail.
+- La V2 possède uniquement deux routes de mutation : ajout et retrait du label `MailMind/Quarantine`. Elle ne possède aucune route de suppression, corbeille, archivage ou envoi.
 
 Ces limites doivent être traitées comme des contraintes d’architecture, pas comme des fonctionnalités implicites. Toute évolution vers plusieurs utilisateurs ou vers des actions Gmail nécessite de revoir le modèle de session, le stockage, les scopes et les contrôles de consentement.

@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#101b19" />
     <meta name="description" content="MailMind, votre boîte Gmail enfin claire." />
+    <script>
+      // Applique le thème avant le rendu React afin d'éviter un flash clair.
+      try {
+        const savedTheme = localStorage.getItem('mailmind:theme:v1');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = savedTheme === 'dark' || savedTheme === 'light' ? savedTheme : (prefersDark ? 'dark' : 'light');
+        document.documentElement.dataset.theme = theme;
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', theme === 'dark' ? '#0f1514' : '#101b19');
+      } catch {}
+    </script>
     <link rel="icon" href="/mailmind-mark.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

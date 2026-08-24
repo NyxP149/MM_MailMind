@@ -20,6 +20,8 @@ export function getConfig(env = process.env) {
     oauthReady: missing.length === 0,
     missing,
     isProduction: env.NODE_ENV === 'production',
+    openaiApiKey: env.OPENAI_API_KEY,
+    openaiModel: env.OPENAI_MODEL || 'gpt-5.4-nano',
+    aiReady: Boolean(env.OPENAI_API_KEY),
   };
 }
-

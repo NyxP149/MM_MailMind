@@ -1,6 +1,8 @@
 import { google } from 'googleapis';
+import { classifyEmail, summarizeClassifications } from './classifier.js';
+import { findQuarantineLabel } from './gmail-actions.js';
 
-const GMAIL_READONLY_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+const GMAIL_MODIFY_SCOPE = 'https://www.googleapis.com/auth/gmail.modify';
 
 export function createGoogleAuth(config) {
   return new google.auth.OAuth2(
@@ -14,7 +16,7 @@ export function createAuthorizationUrl(oauthClient, state) {
   return oauthClient.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
-    scope: [GMAIL_READONLY_SCOPE],
+    scope: [GMAIL_MODIFY_SCOPE],
     state,
   });
 }
@@ -33,11 +35,11 @@ export function parseAddress(value = '') {
   return { name: name || email, email };
 }
 
-export function normalizeMessage(message) {
+export function normalizeMessage(message, quarantineLabelId = null) {
   const headers = message.payload?.headers || [];
   const from = parseAddress(getHeader(headers, 'From'));
 
-  return {
+  const normalized = {
     id: message.id,
     threadId: message.threadId,
     subject: getHeader(headers, 'Subject') || '(Sans objet)',
@@ -46,11 +48,15 @@ export function normalizeMessage(message) {
     snippet: message.snippet || '',
     labels: message.labelIds || [],
     unread: (message.labelIds || []).includes('UNREAD'),
+    quarantined: Boolean(quarantineLabelId && (message.labelIds || []).includes(quarantineLabelId)),
   };
+
+  return { ...normalized, classification: classifyEmail(normalized) };
 }
 
 export async function listMessages(oauthClient, { pageToken, maxResults = 20 } = {}) {
   const gmail = google.gmail({ version: 'v1', auth: oauthClient });
+  const quarantineLabel = await findQuarantineLabel(gmail);
   const listResponse = await gmail.users.messages.list({
     userId: 'me',
     maxResults: Math.min(Math.max(Number(maxResults) || 20, 1), 50),
@@ -67,12 +73,13 @@ export async function listMessages(oauthClient, { pageToken, maxResults = 20 } =
         format: 'metadata',
         metadataHeaders: ['From', 'Subject', 'Date'],
       });
-      return normalizeMessage(response.data);
+      return normalizeMessage(response.data, quarantineLabel?.id);
     }),
   );
 
   return {
     messages,
+    summary: summarizeClassifications(messages),
     nextPageToken: listResponse.data.nextPageToken || null,
     resultSizeEstimate: listResponse.data.resultSizeEstimate || messages.length,
   };
@@ -87,4 +94,3 @@ export async function getProfile(oauthClient) {
     threadsTotal: response.data.threadsTotal,
   };
 }
-

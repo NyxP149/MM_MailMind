@@ -1,10 +1,32 @@
 # MailMind — Déploiement
 
+> Mise à jour V2 : le déploiement inclut classification locale et quarantaine Gmail réversible.
+
+> Mise à jour V3 : le tableau de bord fonctionne sans service analytique externe.
+
+> Mise à jour V4 : les règles personnalisées restent locales au navigateur.
+
+> Mise à jour V5 : l'assistant IA est facultatif et nécessite une clé OpenAI conservée côté serveur.
+
 ## Statut actuel et périmètre
 
 > **La V1 actuelle est conçue pour un usage personnel et local. Elle ne doit pas être exposée telle quelle sur Internet ni ouverte à plusieurs utilisateurs.**
 
-Le frontend est une application React/Vite installable comme PWA. Le backend est une API Express qui réalise le flux Google OAuth 2.0 et appelle Gmail avec le scope de lecture seule. Aujourd'hui, un unique client OAuth et ses jetons sont conservés en mémoire dans le processus Node.js : un redémarrage déconnecte Gmail, et plusieurs visiteurs partageraient le même état d'authentification. Cette architecture est acceptable pour une exécution locale personnelle, pas pour un service public.
+Le frontend est une application React/Vite installable comme PWA. Le backend est une API Express qui réalise le flux Google OAuth 2.0 et appelle Gmail avec `gmail.modify`. Aujourd'hui, un unique client OAuth et ses jetons sont conservés en mémoire dans le processus Node.js : un redémarrage déconnecte Gmail, et plusieurs visiteurs partageraient le même état d'authentification. Cette architecture est acceptable pour une exécution locale personnelle, pas pour un service public.
+
+Le classificateur V2 s’exécute sans service d’IA externe. Les recommandations seules ne modifient pas Gmail. Après double validation, le backend ajoute ou retire exclusivement `MailMind/Quarantine`. Le changement de scope impose une nouvelle autorisation Google. Un journal d’audit en mémoire conserve les 100 dernières actions sans contenu d’e-mail.
+
+Les validations V2 sont actuellement conservées dans `localStorage`. Elles survivent aux rechargements et redémarrages locaux, mais pas à l’effacement des données du site, au changement de navigateur ou d’origine. Un déploiement multi-appareil devra les déplacer vers un stockage serveur authentifié, isolé par utilisateur, avec chiffrement et politique de rétention.
+
+Le scanner étendu n’ajoute aucun processus asynchrone au déploiement : la pagination est pilotée par le navigateur pendant que la page reste ouverte. Les appels Gmail sont séquentiels par lots de 50 au maximum. Pour des scans futurs de plusieurs milliers de messages, il faudra introduire une file de tâches, une reprise sur erreur, un suivi persistant et une gestion explicite des quotas Gmail.
+
+Le tableau Qualité est calculé entièrement côté client. L’export JSON est généré et téléchargé localement sans être transmis au backend. Un futur service de synchronisation devra demander un consentement explicite avant tout envoi de données de feedback et conserver le même principe de minimisation.
+
+Le tableau de bord V3 est également calculé côté client et ne nécessite ni base analytique ni télémétrie. Son historique est limité au navigateur actuel. Un déploiement multi-appareil devra définir une politique de rétention, un schéma d’événements sans contenu Gmail et une suppression accessible à l’utilisateur avant d’activer une synchronisation.
+
+Les règles V4 n’ajoutent aucun service au déploiement. Elles résident dans `localStorage`, ne sont pas synchronisées et n’exécutent aucune mutation Gmail. Une future synchronisation devra isoler les règles par utilisateur, valider les valeurs côté serveur et prévoir export, import et suppression complète.
+
+La V5 ajoute une dépendance réseau facultative vers l'API OpenAI. Chaque analyse est initiée par l'utilisateur, limitée à un seul message minimisé et envoyée avec `store: false`. Le déploiement doit conserver la clé dans son gestionnaire de secrets, limiter le débit de la route IA, surveiller les coûts et informer l'utilisateur du transfert vers un sous-traitant externe. L'absence de clé désactive proprement cette vue sans affecter Gmail ni les versions précédentes.
 
 Avant une mise en production publique, il faut notamment ajouter une vraie gestion des utilisateurs et des sessions, isoler les jetons par utilisateur, les chiffrer au repos, protéger les routes et les actions sensibles, puis faire vérifier l'application OAuth par Google si son audience l'exige. La section « Passage en production publique » détaille ces changements.
 
@@ -36,6 +58,8 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
 FRONTEND_URL=http://localhost:5173
 PORT=3000
 COOKIE_SECRET=chaine-aleatoire-longue-et-unique
+OPENAI_API_KEY=cle-api-optionnelle-pour-la-v5
+OPENAI_MODEL=gpt-5.4-nano
 ```
 
 Le fichier `frontend/.env` peut conserver la valeur locale :
@@ -74,6 +98,8 @@ Dans Google Cloud, l'URI de redirection autorisée doit correspondre **exactemen
 | `FRONTEND_URL` | oui en production | origine exacte autorisée par CORS et destination des redirections |
 | `PORT` | non | port d'écoute du backend, `3000` par défaut |
 | `NODE_ENV` | oui en production | utiliser `production` pour activer notamment le cookie `Secure` |
+| `OPENAI_API_KEY` | non | active l'assistant V5 ; secret exclusivement serveur |
+| `OPENAI_MODEL` | non | modèle de l'assistant, `gpt-5.4-nano` par défaut |
 
 ### Frontend
 
@@ -145,7 +171,7 @@ Dans le client OAuth Google :
 2. déclarer l'URI de redirection exacte `https://api.mailmind.example.com/api/auth/google/callback` ;
 3. conserver séparément les URI locales et de production, idéalement avec des clients OAuth distincts ;
 4. configurer l'écran de consentement, les domaines autorisés, les coordonnées de support, la page d'accueil et les liens de confidentialité requis ;
-5. maintenir le scope minimal `gmail.readonly` ;
+5. maintenir `gmail.modify` comme plafond et limiter le code aux labels réversibles ;
 6. soumettre l'application à la vérification Google avant une audience externe si Google l'exige pour ce scope et ce mode de publication.
 
 Le schéma, le domaine, le port, le chemin et la casse du callback doivent correspondre à la configuration Google. Un écart produit généralement `redirect_uri_mismatch`.
@@ -209,7 +235,7 @@ La publication doit rester bloquée tant que les points structurants suivants ne
 - [ ] HTTPS est obligatoire ; certificats et renouvellement sont supervisés.
 - [ ] CORS contient uniquement l'origine frontend prévue.
 - [ ] Cookies : `HttpOnly`, `Secure`, `SameSite` approprié, portée et durée minimales.
-- [ ] Le scope Google est limité à `gmail.readonly`.
+- [ ] Le scope Google est limité à `gmail.modify` et aucune route destructive n’est exposée.
 - [ ] Les jetons sont isolés par utilisateur et chiffrés au repos avant toute ouverture publique.
 - [ ] CSRF, limitation de débit, validation des entrées et en-têtes de sécurité sont testés.
 - [ ] Les dépendances font l'objet d'un audit et d'un plan de mise à jour.
@@ -227,6 +253,7 @@ La publication doit rester bloquée tant que les points structurants suivants ne
 | un seul compte semble partagé | limitation critique de l'architecture V1 ; ne pas ouvrir le service et ajouter l'isolation par utilisateur |
 | PWA non installable | vérifier HTTPS, manifeste, icône et service worker dans les outils développeur |
 | frontend mis à jour mais ancienne interface visible | vider/mettre à jour le service worker, contrôler les règles de cache et vérifier que `index.html` n'est pas mis en cache trop longtemps |
+| thème incorrect au premier affichage | vérifier que le script de thème de `index.html` est autorisé par la CSP et que `localStorage` n'est pas bloqué |
 | erreurs 401 Gmail | vérifier l'expiration/révocation, le refresh token et l'état de la session ; en V1, reconnecter Gmail |
 | cookies absents derrière un proxy | vérifier HTTPS public, `NODE_ENV=production`, les attributs du cookie et la configuration proxy du backend |
 

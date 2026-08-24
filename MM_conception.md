@@ -1,5 +1,13 @@
 # MailMind — Conception
 
+> Mise à jour V2 : classification explicable, validation humaine, mesure de qualité et label Gmail de quarantaine réversible.
+
+> Mise à jour V3 : tableau de bord local, répartition des catégories et historique d’actions minimisé.
+
+> Mise à jour V4 : règles personnalisées locales sans automatisation Gmail implicite.
+
+> Mise à jour V5 : analyse IA facultative, unitaire et déclenchée uniquement après consentement.
+
 ## 1. Objet du document
 
 Ce document décrit la conception fonctionnelle et technique de MailMind. Il distingue l'état réellement implémenté dans la V1 des orientations prévues par la feuille de route.
@@ -7,6 +15,45 @@ Ce document décrit la conception fonctionnelle et technique de MailMind. Il dis
 MailMind est un assistant personnel de gestion de Gmail. Sa vision est de passer progressivement d'une consultation claire de la boîte mail à un assistant capable de comprendre, classer et, après validation, traiter les messages selon les préférences de l'utilisateur.
 
 La priorité de conception est la confiance : les accès doivent être minimaux, les données ne doivent pas être conservées sans nécessité et aucune action destructive ne doit être introduite sans garde-fous explicites.
+
+## État de conception de la V2
+
+La V2 introduit une analyse déterministe des métadonnées déjà récupérées : sujet, extrait, nom et domaine de l’expéditeur, labels Gmail. Le moteur normalise les accents et la casse, applique des règles pondérées, puis retourne une catégorie principale, un score de confiance, une recommandation et jusqu’à trois motifs explicables.
+
+Les catégories actuelles sont : Adultes, Rencontres, Spam, Arnaque, Newsletter, Publicité, Facture, Travail, Important et Autre. Les recommandations possibles sont `keep`, `review` et `quarantine`.
+
+La quarantaine commence comme une vue virtuelle. Après confirmation humaine puis confirmation d’action, MailMind peut ajouter le label `MailMind/Quarantine` dans Gmail. Le message n’est ni déplacé, ni archivé, ni mis à la corbeille. La restauration retire uniquement ce label, ce qui préserve exactement l’état Gmail d’origine. Le scope OAuth est `gmail.modify` ; aucune capacité de suppression n’est exposée par l’application.
+
+### Boucle de validation humaine
+
+L’utilisateur peut corriger la catégorie proposée, confirmer qu’un message est indésirable ou le signaler comme faux positif. Ces décisions ont priorité sur la suggestion automatique pour l’affichage et les indicateurs. Elles sont stockées dans `localStorage`, donc limitées au navigateur et à l’origine locale actuels. Elles ne constituent pas encore un apprentissage statistique ; elles produisent le jeu de corrections qui permettra de mesurer et améliorer les règles avant l’introduction d’une IA.
+
+### Scanner étendu
+
+L’analyse initiale reste limitée à 20 messages afin de produire rapidement le premier écran. L’utilisateur peut ensuite étendre explicitement l’échantillon à 50, 100 ou 250 messages. Le frontend orchestre la pagination existante et le backend borne chaque appel Gmail entre 1 et 50 messages. Cette conception limite les pics de quota, donne une progression observable et conserve le contrôle utilisateur sur le volume consulté.
+
+### Mesure de qualité
+
+La vue Qualité transforme les validations en indicateurs : précision observée, couverture de vérification, confirmations, faux positifs, corrections et éléments en attente. La précision est calculée uniquement sur les suggestions de quarantaine ayant reçu une décision ; elle doit donc toujours être interprétée avec la couverture et la taille de l’échantillon. Le détail par catégorie permet d’identifier les règles nécessitant un ajustement.
+
+Un export JSON local exclut les identifiants Gmail, sujets, expéditeurs et extraits. Il conserve seulement les catégories automatiques, corrections, décisions et agrégats nécessaires à l’évaluation.
+
+### Quarantaine Gmail réversible
+
+Une suggestion doit être confirmée dans la quarantaine virtuelle avant que le bouton Gmail apparaisse. Un second consentement contextuel décrit exactement l’effet : ajouter un label, sans déplacer ni supprimer le message. L’API exige aussi une preuve de confirmation distincte dans l’en-tête HTTP. La restauration retire le label et n’ajoute aucun autre label système, ce qui évite de modifier l’état antérieur du message.
+
+## Tableau de bord V3
+
+Le tableau de bord agrège les messages actuellement chargés, les décisions locales et l’historique d’actions du navigateur. Il affiche volumes, validations, labels Gmail actifs, restaurations et catégories. L’historique enregistre seulement `action`, `at`, `category` et `categoryLabel`, jamais l’identifiant Gmail ou le texte du message.
+
+L’estimation du temps économisé est volontairement simple et visible : 12 secondes par validation et 8 secondes par action Gmail. Elle est indicative et ne doit pas être présentée comme une mesure exacte de productivité.
+
+## Règles personnalisées V4
+
+Une règle porte sur l’adresse, le domaine ou le nom de l’expéditeur, ou sur le sujet. Elle utilise une comparaison « contient » ou « est exactement » et attribue une catégorie existante. Les règles sont évaluées dans leur ordre d’affichage ; la première correspondance active gagne.
+
+L’ordre de priorité global est : correction manuelle du message, règle personnalisée, classification automatique. Les règles influencent les suggestions, filtres et métriques, mais ne peuvent jamais appliquer seules un label Gmail. Cette séparation empêche qu’une règle trop large provoque une mutation distante sans validation humaine.
+
 
 ## 2. Vision produit
 
@@ -22,7 +69,7 @@ MailMind est conçu d'abord pour un usage personnel. La V1 ne comporte donc ni g
 
 - connexion à un compte Google avec OAuth 2.0 ;
 - validation du paramètre OAuth `state` ;
-- permission Gmail strictement limitée à `gmail.readonly` ;
+- permission Gmail limitée à `gmail.modify` pour la lecture et la gestion du label réversible ;
 - consultation du profil Gmail ;
 - récupération paginée des messages, de 1 à 50 par requête (20 par défaut) ;
 - récupération des seules métadonnées nécessaires : expéditeur, sujet, date, extrait et labels ;
@@ -41,7 +88,13 @@ MailMind est conçu d'abord pour un usage personnel. La V1 ne comporte donc ni g
 - stockage durable des jetons ou du contenu des messages ;
 - prise en charge simultanée de plusieurs utilisateurs.
 
-Les éléments d'interface « Catégories » et « Assistant » sont des amorces visuelles signalées comme prochaines fonctionnalités ; ils ne constituent pas encore des fonctions actives. Le bouton favori affiché sur une ligne ne déclenche actuellement aucune modification Gmail.
+Les vues Catégories, Quarantaine, Qualité, Règles et Assistant sont actives. Le bouton favori ne déclenche aucune modification Gmail.
+
+## Assistant IA V5
+
+La V5 ajoute une seconde lecture consultative, sans remplacer le moteur de règles. L'utilisateur choisit un message, voit précisément les champs qui seront transmis et confirme chaque requête. Les données envoyées sont limitées au sujet, au domaine de l'expéditeur, à un extrait borné et à la suggestion locale. L'adresse complète, le nom de l'expéditeur, l'identifiant Gmail, les labels et le corps intégral sont exclus.
+
+L'IA renvoie une structure contrôlée : résumé, intention, catégorie, confiance, risque, raisons et recommandation. Ce résultat n'est pas appliqué automatiquement au classement local et ne possède aucun accès aux routes Gmail. Il sert à comparer une analyse sémantique au moteur déterministe, conformément au principe « l'IA recommande, l'utilisateur décide ».
 
 ## 4. Architecture conceptuelle
 
@@ -121,7 +174,7 @@ Cette simplicité est adaptée à un usage personnel local, mais elle implique q
 2. Le backend vérifie que la configuration OAuth est complète.
 3. Il génère une valeur `state` aléatoire de 32 octets.
 4. Cette valeur est placée dans un cookie signé, `HttpOnly`, `SameSite=Lax`, valable dix minutes et `Secure` en production.
-5. Le backend redirige vers Google avec le scope `gmail.readonly`, un accès hors ligne et un consentement explicite.
+5. Le backend redirige vers Google avec le scope `gmail.modify`, un accès hors ligne et un consentement explicite.
 6. Google redirige vers `GET /api/auth/google/callback` avec un code et le `state`.
 7. Le backend compare le `state` retourné au cookie signé, échange le code contre des jetons et les conserve en mémoire.
 8. Le navigateur est redirigé vers le frontend avec un résultat synthétique dans le paramètre `auth`.
@@ -146,7 +199,7 @@ Le chargement des détails d'une page est actuellement parallélisé avec `Promi
 
 | Décision | Justification | Conséquence actuelle |
 | --- | --- | --- |
-| Scope `gmail.readonly` | Appliquer le moindre privilège | Aucune route ne peut modifier Gmail |
+| Scope `gmail.modify` | Permettre le label réversible | Les routes applicatives restent limitées à ajouter/retirer le label MailMind |
 | Appels Gmail côté backend | Ne jamais exposer les jetons au navigateur | Le frontend manipule seulement des objets normalisés |
 | Jetons en mémoire | Réduire la persistance de données sensibles en V1 | Reconnexion après redémarrage ; un seul utilisateur à la fois |
 | Aucune base de données | Éviter le stockage inutile avant qu'un besoin réel existe | Pas d'historique, de règles persistantes ni d'apprentissage |
@@ -276,7 +329,7 @@ Ce modèle est volontairement indépendant du schéma complet de Gmail. Les futu
 ### Garanties présentes en V1
 
 - OAuth 2.0 officiel, sans collecte du mot de passe ;
-- moindre privilège grâce au scope de lecture seule ;
+- capacité distante réduite au label réversible malgré le scope Gmail requis ;
 - protection du retour OAuth avec un `state` aléatoire et un cookie signé ;
 - cookie temporaire non lisible par JavaScript ;
 - jetons absents des réponses au frontend et des URL de l'application ;
@@ -301,7 +354,7 @@ Toute évolution vers l'écriture doit demander un scope distinct et être préc
 
 ## 11. Expérience utilisateur, responsive et PWA
 
-L'interface vise une expérience calme, claire et rassurante. Elle rend visible le statut « lecture seule » sur l'accueil, dans le tableau de messages et dans la navigation. Les erreurs de configuration, d'authentification ou de Gmail sont reformulées en français et affichées dans le contexte approprié.
+L'interface vise une expérience calme, claire et rassurante. Elle rappelle qu’aucune suppression n’existe et qu’une confirmation explicite précède chaque changement Gmail. Les erreurs de configuration, d'authentification ou de Gmail sont reformulées en français et affichées dans le contexte approprié.
 
 La mise en page comporte trois paliers principaux :
 
@@ -310,6 +363,8 @@ La mise en page comporte trois paliers principaux :
 - mobile : contenu condensé, actions secondaires masquées et lignes de messages réorganisées.
 
 Les états chargement, vide, erreur, déconnecté et configuré/non configuré sont explicitement prévus. Les préférences système de réduction des animations sont respectées.
+
+L'interface propose également un thème clair et un thème sombre. Lors de la première visite, le choix suit la préférence du système ; une sélection explicite de l'utilisateur devient ensuite prioritaire et reste locale au navigateur. La bascule demeure disponible sur l'écran de connexion, dans l'application et sur mobile. Les deux palettes conservent les mêmes repères fonctionnels et des contrastes adaptés.
 
 La PWA offre aujourd'hui le manifeste, l'icône, le mode autonome et la mise à jour automatique du service worker. L'usage réellement hors ligne n'est pas un objectif de la V1 : les e-mails restent dépendants du backend et de Gmail. Une évolution hors ligne devra éviter de mettre en cache des données sensibles sans consentement et sans chiffrement approprié.
 
@@ -323,7 +378,7 @@ La PWA offre aujourd'hui le manifeste, l'icône, le mode autonome et la mise à 
 - introduire une quarantaine réversible avant toute suppression ;
 - conserver un mode simulation pour mesurer les faux positifs.
 
-Cette version nécessitera de revoir le scope OAuth uniquement au moment où une action Gmail sera réellement activée.
+Le scope OAuth a été étendu à `gmail.modify` lors de l’activation de la quarantaine réversible. Toute nouvelle action Gmail nécessitera une revue séparée.
 
 ### V3 — Tableau de bord
 

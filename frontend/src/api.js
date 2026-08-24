@@ -21,8 +21,20 @@ async function request(path, options = {}) {
 export const api = {
   authUrl: `${API_URL}/api/auth/google`,
   getStatus: () => request('/api/auth/status'),
-  getEmails: (pageToken) =>
-    request(`/api/emails?limit=20${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`),
+  getEmails: (pageToken, limit = 20) =>
+    request(`/api/emails?limit=${Math.min(Math.max(Number(limit) || 20, 1), 50)}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`),
+  quarantineEmail: (id) => request(`/api/emails/${encodeURIComponent(id)}/quarantine`, {
+    method: 'POST',
+    headers: { 'X-MailMind-Confirm': 'quarantine' },
+  }),
+  restoreEmail: (id) => request(`/api/emails/${encodeURIComponent(id)}/restore`, {
+    method: 'POST',
+    headers: { 'X-MailMind-Confirm': 'restore' },
+  }),
+  analyzeEmail: (email) => request('/api/ai/analyze', {
+    method: 'POST',
+    headers: { 'X-MailMind-AI-Consent': 'analyze' },
+    body: JSON.stringify({ email }),
+  }),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
 };
-
