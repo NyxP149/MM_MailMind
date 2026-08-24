@@ -77,7 +77,7 @@ Les événements sont stockés sous `mailmind:action-history:v1` dans `localStor
 
 ## Implémentation de l'assistant V5
 
-`backend/src/ai.js` assure la minimisation, l'appel à l'API Responses et l'extraction de la sortie structurée. Le backend utilise `OPENAI_API_KEY`, fixe `store: false`, borne les textes, impose un schéma JSON strict et traite le contenu de l'e-mail comme une donnée non fiable. La route `POST /api/ai/analyze` exige une connexion Gmail, une configuration IA active et l'en-tête explicite `X-MailMind-AI-Consent: analyze`.
+`backend/src/ai.js` assure la minimisation, l'appel au fournisseur sélectionné et l'extraction de la sortie structurée. `AI_PROVIDER=ollama` appelle l'API locale `/api/chat`, sans clé, avec un schéma JSON et une température nulle. `AI_PROVIDER=openai` conserve l'API Responses, `store: false` et `OPENAI_API_KEY`. Les deux chemins bornent les textes et traitent le contenu de l'e-mail comme une donnée non fiable. La route `POST /api/ai/analyze` exige une connexion Gmail, une configuration IA active et l'en-tête explicite `X-MailMind-AI-Consent: analyze`.
 
 Le frontend envoie uniquement `subject`, `senderDomain`, `snippet` et `ruleSuggestion`. `AIAssistant.jsx` montre ces valeurs avant l'envoi, exige une case de consentement et présente séparément le résultat. Le composant ne reçoit aucun callback de mutation Gmail et ne peut donc exécuter ni quarantaine, ni restauration, ni suppression.
 

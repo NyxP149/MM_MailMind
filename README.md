@@ -137,14 +137,29 @@ Le fichier `.env` est ignoré par Git. Ne publiez jamais le secret client ni les
 
 ## Configuration facultative de l'assistant V5
 
-Ajoutez dans `backend/.env` :
+### Ollama local — recommandé pour un usage gratuit
+
+Installez Ollama, téléchargez un modèle avec `ollama pull qwen3:4b`, puis ajoutez dans `backend/.env` :
 
 ```dotenv
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen3:4b
+```
+
+Ollama doit rester démarré pendant l'utilisation de l'Assistant. Les données minimisées restent sur la machine et aucune clé API n'est nécessaire.
+
+### OpenAI — optionnel
+
+Pour utiliser OpenAI à la place, ajoutez :
+
+```dotenv
+AI_PROVIDER=openai
 OPENAI_API_KEY=votre-cle-api
 OPENAI_MODEL=gpt-5.4-nano
 ```
 
-Redémarrez ensuite MailMind. La clé reste dans le backend et n'est jamais envoyée au navigateur. Sans cette configuration, toutes les versions précédentes continuent de fonctionner et la vue Assistant affiche simplement les instructions d'activation.
+Redémarrez ensuite MailMind. La clé OpenAI reste dans le backend et n'est jamais envoyée au navigateur. Sans fournisseur valide, toutes les versions précédentes continuent de fonctionner et la vue Assistant affiche simplement les instructions d'activation.
 
 ## Commandes
 

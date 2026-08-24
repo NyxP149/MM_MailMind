@@ -40,8 +40,10 @@ export function createApp(config) {
   app.use(cookieParser(config.cookieSecret || 'mailmind-development-only'));
 
   app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', service: 'MailMind API', oauthReady: config.oauthReady, aiReady: config.aiReady });
+    res.json({ status: 'ok', service: 'MailMind API', oauthReady: config.oauthReady, aiReady: config.aiReady, aiProvider: config.aiProvider });
   });
+
+  const aiStatus = () => ({ configured: config.aiReady, provider: config.aiProvider, model: config.aiModel });
 
   app.get('/api/auth/status', async (_req, res) => {
     if (!config.oauthReady) {
@@ -49,21 +51,21 @@ export function createApp(config) {
         connected: false,
         configured: false,
         missing: config.missing,
-        ai: { configured: config.aiReady, model: config.openaiModel },
+        ai: aiStatus(),
       });
     }
 
     if (!connected || !oauthClient.credentials.access_token) {
-      return res.json({ connected: false, configured: true, ai: { configured: config.aiReady, model: config.openaiModel } });
+      return res.json({ connected: false, configured: true, ai: aiStatus() });
     }
 
     try {
       const profile = await getProfile(oauthClient);
-      return res.json({ connected: true, configured: true, accessMode: 'modify', profile, ai: { configured: config.aiReady, model: config.openaiModel } });
+      return res.json({ connected: true, configured: true, accessMode: 'modify', profile, ai: aiStatus() });
     } catch {
       connected = false;
       oauthClient.setCredentials({});
-      return res.json({ connected: false, configured: true, ai: { configured: config.aiReady, model: config.openaiModel } });
+      return res.json({ connected: false, configured: true, ai: aiStatus() });
     }
   });
 
@@ -184,7 +186,7 @@ export function createApp(config) {
       return apiError(res, 401, 'NOT_CONNECTED', 'Connectez d’abord votre compte Gmail.');
     }
     if (!config.aiReady) {
-      return apiError(res, 503, 'AI_NOT_CONFIGURED', 'Ajoutez OPENAI_API_KEY dans backend/.env pour activer l’assistant V5.');
+      return apiError(res, 503, 'AI_NOT_CONFIGURED', 'Configurez AI_PROVIDER et les paramètres du fournisseur IA dans backend/.env.');
     }
     if (req.get('x-mailmind-ai-consent') !== 'analyze') {
       return apiError(res, 409, 'AI_CONSENT_REQUIRED', 'Confirmez explicitement l’analyse de ce message.');
@@ -192,7 +194,7 @@ export function createApp(config) {
 
     try {
       const analysis = await analyzeEmailWithAI(config, req.body?.email);
-      return res.json({ analysis, model: config.openaiModel });
+      return res.json({ analysis, provider: config.aiProvider, model: config.aiModel });
     } catch (error) {
       if (error instanceof AIServiceError && error.code === 'INVALID_AI_INPUT') {
         return apiError(res, 400, error.code, error.message);

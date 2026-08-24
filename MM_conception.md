@@ -96,6 +96,8 @@ Les vues Catégories, Quarantaine, Qualité, Règles et Assistant sont actives. 
 
 La V5 ajoute une seconde lecture consultative, sans remplacer le moteur de règles. L'utilisateur choisit un message, voit précisément les champs qui seront transmis et confirme chaque requête. Les données envoyées sont limitées au sujet, au domaine de l'expéditeur, à un extrait borné et à la suggestion locale. L'adresse complète, le nom de l'expéditeur, l'identifiant Gmail, les labels et le corps intégral sont exclus.
 
+Le fournisseur est interchangeable. Le mode `ollama` exécute le modèle sur la machine de l'utilisateur et constitue le choix local par défaut recommandé ; le mode `openai` reste disponible avec une clé serveur. Cette séparation conserve la même minimisation et le même contrat de résultat quel que soit le moteur.
+
 L'IA renvoie une structure contrôlée : résumé, intention, catégorie, confiance, risque, raisons et recommandation. Ce résultat n'est pas appliqué automatiquement au classement local et ne possède aucun accès aux routes Gmail. Il sert à comparer une analyse sémantique au moteur déterministe, conformément au principe « l'IA recommande, l'utilisateur décide ».
 
 ## Apprentissage local V6

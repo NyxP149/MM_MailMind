@@ -62,6 +62,9 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
 FRONTEND_URL=http://localhost:5173
 PORT=3000
 COOKIE_SECRET=chaine-aleatoire-longue-et-unique
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen3:4b
 OPENAI_API_KEY=cle-api-optionnelle-pour-la-v5
 OPENAI_MODEL=gpt-5.4-nano
 ```
@@ -102,8 +105,11 @@ Dans Google Cloud, l'URI de redirection autorisée doit correspondre **exactemen
 | `FRONTEND_URL` | oui en production | origine exacte autorisée par CORS et destination des redirections |
 | `PORT` | non | port d'écoute du backend, `3000` par défaut |
 | `NODE_ENV` | oui en production | utiliser `production` pour activer notamment le cookie `Secure` |
-| `OPENAI_API_KEY` | non | active l'assistant V5 ; secret exclusivement serveur |
-| `OPENAI_MODEL` | non | modèle de l'assistant, `gpt-5.4-nano` par défaut |
+| `AI_PROVIDER` | non | fournisseur V5 : `ollama` ou `openai` ; `openai` par défaut pour compatibilité |
+| `OLLAMA_BASE_URL` | avec Ollama distant | API Ollama, `http://127.0.0.1:11434` par défaut |
+| `OLLAMA_MODEL` | non | modèle local, `qwen3:4b` par défaut |
+| `OPENAI_API_KEY` | avec `AI_PROVIDER=openai` | secret exclusivement serveur |
+| `OPENAI_MODEL` | non | modèle OpenAI, `gpt-5.4-nano` par défaut |
 
 ### Frontend
 
