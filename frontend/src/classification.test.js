@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyClassificationOverrides, applyCustomRules, computeDashboardMetrics, computeQualityMetrics, mergeEmails } from './classification.js';
+import { applyClassificationOverrides, applyCustomRules, applyLearnedPreferences, buildLearningModel, computeDashboardMetrics, computeLearningMetrics, computeQualityMetrics, createLearningExample, extractLearningSignals, mergeEmails, upsertLearningExample } from './classification.js';
 
 describe('applyClassificationOverrides', () => {
   it('replaces an automatic category with an explainable manual correction', () => {
@@ -83,5 +83,55 @@ describe('computeDashboardMetrics', () => {
     expect(result.quarantinedInGmail).toBe(1);
     expect(result.restored).toBe(1);
     expect(result.categories[0].count).toBe(1);
+  });
+});
+
+describe('apprentissage local V6', () => {
+  const email = (id, subject, address = `info@shop.example`) => ({
+    id,
+    subject,
+    from: { name: 'Service', email: address },
+    classification: { id: 'autre', label: 'Autre', action: 'keep' },
+  });
+
+  it('extrait des signaux minimisés sans conserver le sujet complet', () => {
+    expect(extractLearningSignals(email('1', 'Votre facture mensuelle disponible'))).toEqual({
+      domain: 'shop.example',
+      keywords: ['facture', 'mensuelle', 'disponible'],
+    });
+    expect(extractLearningSignals(email('2', 'Message personnel', 'person@gmail.com')).domain).toBe('');
+  });
+
+  it('remplace la correction précédente du même message', () => {
+    const first = createLearningExample(email('1', 'Facture disponible'), 'facture', '2026-01-01T00:00:00.000Z');
+    const second = createLearningExample(email('1', 'Facture disponible'), 'travail', '2026-01-02T00:00:00.000Z');
+    const examples = upsertLearningExample(upsertLearningExample([], first), second);
+    expect(examples).toHaveLength(1);
+    expect(examples[0].categoryId).toBe('travail');
+    expect(examples[0]).not.toHaveProperty('subject');
+  });
+
+  it('active un domaine après deux corrections concordantes', () => {
+    const examples = [
+      createLearningExample(email('1', 'Facture janvier'), 'facture'),
+      createLearningExample(email('2', 'Facture février'), 'facture'),
+    ];
+    const domain = buildLearningModel(examples).find((signal) => signal.type === 'domain');
+    expect(domain.active).toBe(true);
+    expect(domain.categoryId).toBe('facture');
+    expect(computeLearningMetrics(examples).activeSignals).toHaveLength(1);
+  });
+
+  it('applique la préférence apprise sans écraser une règle explicite', () => {
+    const examples = [
+      createLearningExample(email('1', 'Facture janvier'), 'facture'),
+      createLearningExample(email('2', 'Facture février'), 'facture'),
+    ];
+    const [learned] = applyLearnedPreferences([email('3', 'Votre reçu')], examples);
+    expect(learned.classification.id).toBe('facture');
+    expect(learned.classification.learned).toBe(true);
+
+    const explicit = { ...email('4', 'Votre reçu'), classification: { id: 'travail', customRule: true } };
+    expect(applyLearnedPreferences([explicit], examples)[0]).toBe(explicit);
   });
 });

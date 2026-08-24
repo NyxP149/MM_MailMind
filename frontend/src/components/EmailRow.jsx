@@ -34,6 +34,7 @@ export function EmailRow({ email, index, editable = false, decision, onCategoryC
             </select>
           )}
           {email.classification?.corrected && <span className="manual-mark">Corrigé</span>}
+          {email.classification?.learned && <span className="learned-mark">Appris</span>}
         </div>
         <p>{email.snippet || 'Aucun aperçu disponible'}</p>
       </div>

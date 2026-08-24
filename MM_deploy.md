@@ -8,6 +8,8 @@
 
 > Mise à jour V5 : l'assistant IA est facultatif et nécessite une clé OpenAI conservée côté serveur.
 
+> Mise à jour V6 : l'apprentissage fonctionne localement sans service ni base supplémentaire.
+
 ## Statut actuel et périmètre
 
 > **La V1 actuelle est conçue pour un usage personnel et local. Elle ne doit pas être exposée telle quelle sur Internet ni ouverte à plusieurs utilisateurs.**
@@ -27,6 +29,8 @@ Le tableau de bord V3 est également calculé côté client et ne nécessite ni 
 Les règles V4 n’ajoutent aucun service au déploiement. Elles résident dans `localStorage`, ne sont pas synchronisées et n’exécutent aucune mutation Gmail. Une future synchronisation devra isoler les règles par utilisateur, valider les valeurs côté serveur et prévoir export, import et suppression complète.
 
 La V5 ajoute une dépendance réseau facultative vers l'API OpenAI. Chaque analyse est initiée par l'utilisateur, limitée à un seul message minimisé et envoyée avec `store: false`. Le déploiement doit conserver la clé dans son gestionnaire de secrets, limiter le débit de la route IA, surveiller les coûts et informer l'utilisateur du transfert vers un sous-traitant externe. L'absence de clé désactive proprement cette vue sans affecter Gmail ni les versions précédentes.
+
+La V6 ne crée aucun appel réseau supplémentaire. Ses exemples et son modèle dérivé restent dans `localStorage`, avec une limite de 500 corrections et une commande de réinitialisation. Un déploiement multi-appareil ne doit pas synchroniser cette mémoire sans consentement, chiffrement, isolation par utilisateur, export et suppression complète. La suppression des données du site efface la mémoire V6.
 
 Avant une mise en production publique, il faut notamment ajouter une vraie gestion des utilisateurs et des sessions, isoler les jetons par utilisateur, les chiffrer au repos, protéger les routes et les actions sensibles, puis faire vérifier l'application OAuth par Google si son audience l'exige. La section « Passage en production publique » détaille ces changements.
 

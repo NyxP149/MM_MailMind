@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   Inbox,
+  GraduationCap,
   LayoutDashboard,
   ListChecks,
   LogOut,
@@ -31,13 +32,15 @@ import { QualityDashboard } from './components/QualityDashboard.jsx';
 import { Dashboard } from './components/Dashboard.jsx';
 import { RulesManager } from './components/RulesManager.jsx';
 import { AIAssistant } from './components/AIAssistant.jsx';
-import { applyClassificationOverrides, applyCustomRules, mergeEmails, readLocalMap } from './classification.js';
+import { LearningDashboard } from './components/LearningDashboard.jsx';
+import { applyClassificationOverrides, applyCustomRules, applyLearnedPreferences, createLearningExample, mergeEmails, readLocalMap, upsertLearningExample } from './classification.js';
 import { resolveTheme, THEME_KEY } from './theme.js';
 
 const OVERRIDES_KEY = 'mailmind:classification-overrides:v1';
 const DECISIONS_KEY = 'mailmind:quarantine-decisions:v1';
 const ACTION_HISTORY_KEY = 'mailmind:action-history:v1';
 const RULES_KEY = 'mailmind:custom-rules:v1';
+const LEARNING_KEY = 'mailmind:learning-examples:v1';
 function initialTheme() {
   return resolveTheme(
     localStorage.getItem(THEME_KEY),
@@ -131,6 +134,10 @@ export default function App() {
     const stored = readLocalMap(RULES_KEY);
     return Array.isArray(stored) ? stored : [];
   });
+  const [learningExamples, setLearningExamples] = useState(() => {
+    const stored = readLocalMap(LEARNING_KEY);
+    return Array.isArray(stored) ? stored : [];
+  });
   const [theme, setTheme] = useState(initialTheme);
 
   useEffect(() => {
@@ -138,6 +145,18 @@ export default function App() {
     localStorage.setItem(THEME_KEY, theme);
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0f1514' : '#101b19');
   }, [theme]);
+
+  useEffect(() => {
+    if (!emails.length) return;
+    const imported = Object.entries(classificationOverrides).reduce((current, [emailId, override]) => {
+      const email = emails.find((item) => item.id === emailId);
+      return upsertLearningExample(current, createLearningExample(email, override.categoryId, override.correctedAt));
+    }, learningExamples);
+    if (JSON.stringify(imported) !== JSON.stringify(learningExamples)) {
+      localStorage.setItem(LEARNING_KEY, JSON.stringify(imported));
+      setLearningExamples(imported);
+    }
+  }, [classificationOverrides, emails, learningExamples]);
 
   const loadEmails = useCallback(async (pageToken) => {
     pageToken ? setLoadingMore(true) : setLoading(true);
@@ -179,7 +198,8 @@ export default function App() {
   };
 
   const ruledEmails = applyCustomRules(emails, customRules);
-  const effectiveEmails = applyClassificationOverrides(ruledEmails, classificationOverrides);
+  const learnedEmails = applyLearnedPreferences(ruledEmails, learningExamples);
+  const effectiveEmails = applyClassificationOverrides(learnedEmails, classificationOverrides);
 
   const visibleEmails = effectiveEmails.filter((email) => {
     const haystack = `${email.subject} ${email.from.name} ${email.from.email} ${email.snippet}`.toLowerCase();
@@ -198,6 +218,7 @@ export default function App() {
     dashboard: { eyebrow: 'Tableau de bord V3', title: 'Votre activité', description: 'Suivez les analyses, validations et actions réversibles de MailMind.', panel: 'Activité' },
     rules: { eyebrow: 'Personnalisation V4', title: 'Règles personnalisées', description: 'Adaptez les suggestions MailMind à vos propres préférences.', panel: 'Règles' },
     assistant: { eyebrow: 'Assistant V5', title: 'Intelligence artificielle', description: 'Demandez une analyse approfondie, message par message.', panel: 'Assistant' },
+    learning: { eyebrow: 'Apprentissage V6', title: 'Préférences apprises', description: 'Comprenez comment vos corrections améliorent MailMind.', panel: 'Apprentissage' },
   }[activeView];
 
   const changeView = (view) => {
@@ -207,11 +228,27 @@ export default function App() {
   };
 
   const updateCategory = (emailId, categoryId) => {
+    const correctedAt = new Date().toISOString();
     setClassificationOverrides((current) => {
-      const next = { ...current, [emailId]: { categoryId, correctedAt: new Date().toISOString() } };
+      const next = { ...current, [emailId]: { categoryId, correctedAt } };
       localStorage.setItem(OVERRIDES_KEY, JSON.stringify(next));
       return next;
     });
+    const sourceEmail = emails.find((email) => email.id === emailId);
+    const example = createLearningExample(sourceEmail, categoryId, correctedAt);
+    if (example) {
+      setLearningExamples((current) => {
+        const next = upsertLearningExample(current, example);
+        localStorage.setItem(LEARNING_KEY, JSON.stringify(next));
+        return next;
+      });
+    }
+  };
+
+  const resetLearning = () => {
+    if (!window.confirm('Réinitialiser toutes les préférences apprises par MailMind ?\n\nVos corrections de messages resteront intactes.')) return;
+    localStorage.removeItem(LEARNING_KEY);
+    setLearningExamples([]);
   };
 
   const updateDecision = (emailId, decision) => {
@@ -343,6 +380,7 @@ export default function App() {
           <button className={activeView === 'quality' ? 'nav-item active' : 'nav-item'} onClick={() => changeView('quality')}><BarChart3 size={19} /> Qualité <span className="v2-badge">V2</span></button>
           <button className={activeView === 'rules' ? 'nav-item active' : 'nav-item'} onClick={() => changeView('rules')}><ListChecks size={19} /> Règles <span className="v4-badge">V4</span></button>
           <button className={activeView === 'assistant' ? 'nav-item active' : 'nav-item'} onClick={() => changeView('assistant')}><Sparkles size={19} /> Assistant <span className="v5-badge">V5</span></button>
+          <button className={activeView === 'learning' ? 'nav-item active' : 'nav-item'} onClick={() => changeView('learning')}><GraduationCap size={19} /> Apprentissage <span className="v6-badge">V6</span></button>
         </nav>
         <div className="sidebar-footer">
           <div className="privacy-card"><ShieldCheck size={20} /><div><strong>Vos données restent privées</strong><span>Labels réversibles via Google</span></div></div>
@@ -379,10 +417,12 @@ export default function App() {
           </div>
           {error && <div className="inline-error" role="alert">{error}<button onClick={() => loadEmails()}>Réessayer</button></div>}
           {scanNotice && <div className="scan-notice" role="status"><ScanSearch size={16} /> {scanNotice}</div>}
-          {activeView !== 'inbox' && activeView !== 'quality' && activeView !== 'dashboard' && activeView !== 'rules' && activeView !== 'assistant' && !loading && (
+          {activeView !== 'inbox' && activeView !== 'quality' && activeView !== 'dashboard' && activeView !== 'rules' && activeView !== 'assistant' && activeView !== 'learning' && !loading && (
             <ClassificationOverview emails={effectiveEmails} selectedCategory={selectedCategory} onSelectCategory={setSelectedCategory} decisions={decisions} />
           )}
-          {activeView === 'assistant' && !loading ? (
+          {activeView === 'learning' && !loading ? (
+            <LearningDashboard examples={learningExamples} onReset={resetLearning} />
+          ) : activeView === 'assistant' && !loading ? (
             <AIAssistant emails={effectiveEmails} configured={status.ai?.configured} model={status.ai?.model} />
           ) : activeView === 'rules' && !loading ? (
             <RulesManager rules={customRules} onAdd={addCustomRule} onToggle={toggleCustomRule} onDelete={deleteCustomRule} />
@@ -397,7 +437,7 @@ export default function App() {
               {nextPageToken && !query && <div className="load-more"><button onClick={() => loadEmails(nextPageToken)} disabled={loadingMore}>{loadingMore ? 'Chargement…' : 'Afficher plus de messages'}</button></div>}
             </section>
           )}
-          <p className="v1-note"><ShieldCheck size={15} /> {activeView === 'assistant' ? 'Version 5 — L’IA conseille uniquement après votre consentement. Aucune action Gmail.' : 'Version 2 — Gmail ne change qu’après votre confirmation explicite. Aucune suppression.'}</p>
+          <p className="v1-note"><ShieldCheck size={15} /> {activeView === 'assistant' ? 'Version 5 — L’IA conseille uniquement après votre consentement. Aucune action Gmail.' : activeView === 'learning' ? 'Version 6 — L’apprentissage reste local, explicable et réversible. Aucune action Gmail.' : 'Version 2 — Gmail ne change qu’après votre confirmation explicite. Aucune suppression.'}</p>
         </main>
       </div>
       {sidebarOpen && <button className="sidebar-scrim" onClick={() => setSidebarOpen(false)} aria-label="Fermer le menu" />}

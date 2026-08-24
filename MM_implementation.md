@@ -8,6 +8,8 @@
 
 > Mise à jour V5 : service OpenAI optionnel et vue d'analyse IA avec consentement unitaire.
 
+> Mise à jour V6 : moteur de préférences locales dérivé des corrections explicites.
+
 Ce document décrit l’implémentation actuellement présente dans le dépôt. Il sert de référence aux personnes qui développent, testent ou maintiennent MailMind. La version actuelle reste personnelle et locale ; elle lit Gmail et peut uniquement ajouter ou retirer son label de quarantaine après confirmation.
 
 ## 1. Vue d’ensemble technique
@@ -78,6 +80,12 @@ Les événements sont stockés sous `mailmind:action-history:v1` dans `localStor
 `backend/src/ai.js` assure la minimisation, l'appel à l'API Responses et l'extraction de la sortie structurée. Le backend utilise `OPENAI_API_KEY`, fixe `store: false`, borne les textes, impose un schéma JSON strict et traite le contenu de l'e-mail comme une donnée non fiable. La route `POST /api/ai/analyze` exige une connexion Gmail, une configuration IA active et l'en-tête explicite `X-MailMind-AI-Consent: analyze`.
 
 Le frontend envoie uniquement `subject`, `senderDomain`, `snippet` et `ruleSuggestion`. `AIAssistant.jsx` montre ces valeurs avant l'envoi, exige une case de consentement et présente séparément le résultat. Le composant ne reçoit aucun callback de mutation Gmail et ne peut donc exécuter ni quarantaine, ni restauration, ni suppression.
+
+## Implémentation de l'apprentissage V6
+
+`classification.js` expose `extractLearningSignals`, `createLearningExample`, `upsertLearningExample`, `buildLearningModel`, `applyLearnedPreferences` et `computeLearningMetrics`. Les exemples sont stockés sous `mailmind:learning-examples:v1` et limités aux 500 plus récents. Une empreinte FNV locale remplace l'identifiant Gmail pour dédupliquer les corrections d'un même message.
+
+Le pipeline de classement est : moteur automatique backend, première règle V4 correspondante, préférence V6 active, puis correction manuelle propre au message. `LearningDashboard.jsx` présente la mémoire sans recopier les contenus Gmail et permet sa réinitialisation indépendante. Au chargement, les anciennes corrections V2 encore associées à un message présent sont importées progressivement dans la mémoire V6.
 
 
 ```text

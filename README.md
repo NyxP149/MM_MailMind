@@ -52,6 +52,16 @@ MailMind est une application web personnelle qui connecte Gmail à une interface
 - réponse structurée via l'API OpenAI, avec `store: false` ;
 - aucune action Gmail déclenchée par l'IA.
 
+### V6 — Apprentissage local
+
+- création d'exemples à partir des corrections manuelles explicites ;
+- mémorisation locale limitée au domaine non partagé, aux mots-clés normalisés et à la catégorie corrigée ;
+- activation prudente après deux domaines ou trois mots-clés concordants, avec au moins 75 % de cohérence ;
+- priorité conservée aux corrections manuelles et aux règles personnalisées ;
+- tableau de bord des préférences actives et des signaux encore en observation ;
+- mémoire limitée à 500 exemples et entièrement réinitialisable ;
+- aucune synchronisation, aucun appel IA et aucune action Gmail automatique.
+
 Priorité de classification : correction manuelle d’un message, puis première règle personnalisée active correspondante, puis moteur automatique MailMind. Une règle ne déclenche jamais automatiquement une action Gmail.
 
 Les corrections et validations sont propres au navigateur utilisé. Elles ne sont ni envoyées à Gmail ni synchronisées avec un serveur. Effacer les données du site dans le navigateur les réinitialise.
@@ -163,4 +173,4 @@ Les appels Gmail passent exclusivement par le backend. Le frontend ne reçoit ja
 
 ## Roadmap
 
-Les versions V1 à V5 sont disponibles : Gmail, classification prudente, dashboard, règles personnalisées et assistant IA à la demande. La prochaine étape est la V6, consacrée à l'apprentissage progressif à partir des corrections explicites. Toute action destructive reste désactivée.
+Les versions V1 à V6 sont disponibles : Gmail, classification prudente, dashboard, règles personnalisées, assistant IA à la demande et apprentissage local à partir des corrections. La prochaine étape est la V7, consacrée à l’agent autonome contrôlé et à ses rapports. Toute action destructive reste désactivée.

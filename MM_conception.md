@@ -8,6 +8,8 @@
 
 > Mise à jour V5 : analyse IA facultative, unitaire et déclenchée uniquement après consentement.
 
+> Mise à jour V6 : apprentissage local, explicable et réinitialisable à partir des corrections.
+
 ## 1. Objet du document
 
 Ce document décrit la conception fonctionnelle et technique de MailMind. Il distingue l'état réellement implémenté dans la V1 des orientations prévues par la feuille de route.
@@ -95,6 +97,14 @@ Les vues Catégories, Quarantaine, Qualité, Règles et Assistant sont actives. 
 La V5 ajoute une seconde lecture consultative, sans remplacer le moteur de règles. L'utilisateur choisit un message, voit précisément les champs qui seront transmis et confirme chaque requête. Les données envoyées sont limitées au sujet, au domaine de l'expéditeur, à un extrait borné et à la suggestion locale. L'adresse complète, le nom de l'expéditeur, l'identifiant Gmail, les labels et le corps intégral sont exclus.
 
 L'IA renvoie une structure contrôlée : résumé, intention, catégorie, confiance, risque, raisons et recommandation. Ce résultat n'est pas appliqué automatiquement au classement local et ne possède aucun accès aux routes Gmail. Il sert à comparer une analyse sémantique au moteur déterministe, conformément au principe « l'IA recommande, l'utilisateur décide ».
+
+## Apprentissage local V6
+
+Chaque correction de catégorie peut produire un exemple local minimisé : empreinte non réversible du message, domaine expéditeur lorsqu'il ne s'agit pas d'un fournisseur partagé, mots-clés normalisés du sujet, catégorie choisie et date. Le sujet complet, l'adresse complète, le nom, l'extrait et le corps ne sont pas conservés dans cette mémoire.
+
+Un signal ne devient actif qu'après plusieurs observations concordantes : deux pour un domaine, trois pour un mot-clé, avec une cohérence minimale de 75 %. Une préférence apprise reste moins prioritaire qu'une correction manuelle ou qu'une règle V4 créée explicitement. Elle change uniquement la suggestion locale et ne déclenche aucune action Gmail.
+
+La vue Apprentissage rend visibles les signaux actifs, leur confiance et les observations encore insuffisantes. L'utilisateur peut réinitialiser toute la mémoire V6 sans effacer ses corrections de messages. La mémoire est bornée à 500 exemples dans `localStorage`.
 
 ## 4. Architecture conceptuelle
 

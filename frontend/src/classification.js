@@ -11,6 +11,130 @@ export const CATEGORY_OPTIONS = [
   { id: 'autre', label: 'Autre', action: 'keep' },
 ];
 
+const LEARNING_STOP_WORDS = new Set([
+  'avec', 'dans', 'pour', 'votre', 'vous', 'nous', 'cette', 'notre', 'from', 'your', 'with', 'this', 'that', 'have', 'will', 'pourrait',
+  'della', 'delle', 'sono', 'come', 'from', 'message', 'email', 'mail', 'nouveau', 'nouvelle', 'hello', 'bonjour', 're', 'fwd',
+]);
+
+const SHARED_MAIL_DOMAINS = new Set(['gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'icloud.com', 'live.com']);
+
+function normalizeLearningText(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function fingerprint(value) {
+  let hash = 2166136261;
+  for (const character of String(value || '')) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `local-${(hash >>> 0).toString(16)}`;
+}
+
+export function extractLearningSignals(email) {
+  const domain = (email?.from?.email || '').split('@')[1]?.toLowerCase() || '';
+  const keywords = [...new Set(normalizeLearningText(email?.subject).match(/[a-z0-9]{4,}/g) || [])]
+    .filter((word) => !LEARNING_STOP_WORDS.has(word) && !/^\d+$/.test(word))
+    .slice(0, 8);
+  return {
+    domain: SHARED_MAIL_DOMAINS.has(domain) ? '' : domain,
+    keywords,
+  };
+}
+
+export function createLearningExample(email, categoryId, correctedAt = new Date().toISOString()) {
+  if (!CATEGORY_OPTIONS.some((category) => category.id === categoryId)) return null;
+  const signals = extractLearningSignals(email);
+  if (!signals.domain && !signals.keywords.length) return null;
+  return {
+    id: fingerprint(email?.id || `${signals.domain}:${email?.subject || ''}`),
+    categoryId,
+    domain: signals.domain,
+    keywords: signals.keywords,
+    correctedAt,
+  };
+}
+
+export function upsertLearningExample(examples = [], example) {
+  if (!example) return examples;
+  return [example, ...examples.filter((current) => current.id !== example.id)].slice(0, 500);
+}
+
+export function buildLearningModel(examples = []) {
+  const observations = new Map();
+  const add = (type, value, categoryId) => {
+    if (!value || !CATEGORY_OPTIONS.some((category) => category.id === categoryId)) return;
+    const key = `${type}:${value}`;
+    const observation = observations.get(key) || { type, value, total: 0, categories: {} };
+    observation.total += 1;
+    observation.categories[categoryId] = (observation.categories[categoryId] || 0) + 1;
+    observations.set(key, observation);
+  };
+
+  examples.forEach((example) => {
+    add('domain', example.domain, example.categoryId);
+    example.keywords?.forEach((keyword) => add('keyword', keyword, example.categoryId));
+  });
+
+  return [...observations.values()].map((observation) => {
+    const [categoryId, count] = Object.entries(observation.categories).sort((a, b) => b[1] - a[1])[0] || ['autre', 0];
+    const confidence = observation.total ? count / observation.total : 0;
+    const minimum = observation.type === 'domain' ? 2 : 3;
+    return {
+      type: observation.type,
+      value: observation.value,
+      categoryId,
+      count,
+      total: observation.total,
+      confidence,
+      active: count >= minimum && confidence >= 0.75,
+    };
+  }).sort((a, b) => Number(b.active) - Number(a.active) || b.count - a.count || a.value.localeCompare(b.value));
+}
+
+export function applyLearnedPreferences(emails, examples = []) {
+  const model = buildLearningModel(examples).filter((signal) => signal.active);
+  const domains = new Map(model.filter((signal) => signal.type === 'domain').map((signal) => [signal.value, signal]));
+  const keywords = new Map(model.filter((signal) => signal.type === 'keyword').map((signal) => [signal.value, signal]));
+
+  return emails.map((email) => {
+    if (email.classification?.customRule) return email;
+    const extracted = extractLearningSignals(email);
+    const signal = domains.get(extracted.domain) || extracted.keywords
+      .map((keyword) => keywords.get(keyword))
+      .filter(Boolean)
+      .sort((a, b) => b.count * b.confidence - a.count * a.confidence)[0];
+    if (!signal) return email;
+
+    const category = CATEGORY_OPTIONS.find((option) => option.id === signal.categoryId);
+    if (!category) return email;
+    return {
+      ...email,
+      classification: {
+        ...category,
+        confidence: Math.min(0.96, 0.65 + signal.confidence * 0.3),
+        reasons: [`Préférence apprise : ${signal.type === 'domain' ? 'domaine' : 'mot-clé'} « ${signal.value} » confirmé ${signal.count} fois`],
+        learned: true,
+        learningSignal: { type: signal.type, value: signal.value },
+      },
+    };
+  });
+}
+
+export function computeLearningMetrics(examples = []) {
+  const signals = buildLearningModel(examples);
+  const categoryCounts = examples.reduce((counts, example) => {
+    counts[example.categoryId] = (counts[example.categoryId] || 0) + 1;
+    return counts;
+  }, {});
+  return {
+    examples: examples.length,
+    activeSignals: signals.filter((signal) => signal.active),
+    pendingSignals: signals.filter((signal) => !signal.active),
+    categoryCounts,
+  };
+}
+
 export function applyClassificationOverrides(emails, overrides = {}) {
   return emails.map((email) => {
     const override = overrides[email.id];
