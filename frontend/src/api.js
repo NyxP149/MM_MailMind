@@ -36,5 +36,11 @@ export const api = {
     headers: { 'X-MailMind-AI-Consent': 'analyze' },
     body: JSON.stringify({ email }),
   }),
+  startAIAnalysis: (email) => request('/api/ai/jobs', {
+    method: 'POST',
+    headers: { 'X-MailMind-AI-Consent': 'analyze' },
+    body: JSON.stringify({ email }),
+  }),
+  getAIAnalysisJob: (id) => request(`/api/ai/jobs/${encodeURIComponent(id)}`),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
 };

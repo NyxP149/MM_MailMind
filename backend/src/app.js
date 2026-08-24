@@ -11,6 +11,7 @@ import {
 } from './google.js';
 import { isValidMessageId, quarantineMessage, restoreMessage } from './gmail-actions.js';
 import { AIServiceError, analyzeEmailWithAI } from './ai.js';
+import { createAIJobManager } from './ai-jobs.js';
 
 const OAUTH_COOKIE = 'mailmind_oauth_state';
 
@@ -23,6 +24,7 @@ export function createApp(config) {
   const oauthClient = createGoogleAuth(config);
   let connected = false;
   const auditLog = [];
+  const aiJobs = createAIJobManager();
 
   oauthClient.on('tokens', (tokens) => {
     if (tokens.access_token || tokens.refresh_token) connected = true;
@@ -202,6 +204,40 @@ export function createApp(config) {
       console.error('AI analysis failed:', error.code || error.message);
       return apiError(res, 502, error.code || 'AI_ERROR', error.message || 'L’analyse IA a échoué.');
     }
+  });
+
+  app.post('/api/ai/jobs', (req, res) => {
+    if (!connected || !oauthClient.credentials.access_token) {
+      return apiError(res, 401, 'NOT_CONNECTED', 'Connectez d’abord votre compte Gmail.');
+    }
+    if (!config.aiReady) {
+      return apiError(res, 503, 'AI_NOT_CONFIGURED', 'Configurez AI_PROVIDER et les paramètres du fournisseur IA dans backend/.env.');
+    }
+    if (req.get('x-mailmind-ai-consent') !== 'analyze') {
+      return apiError(res, 409, 'AI_CONSENT_REQUIRED', 'Confirmez explicitement l’analyse de ce message.');
+    }
+
+    try {
+      return res.status(202).json(aiJobs.start(config, req.body?.email));
+    } catch (error) {
+      if (error instanceof AIServiceError && error.code === 'INVALID_AI_INPUT') {
+        return apiError(res, 400, error.code, error.message);
+      }
+      return apiError(res, 429, error.code || 'AI_JOB_ERROR', error.message || 'Impossible de démarrer l’analyse.');
+    }
+  });
+
+  app.get('/api/ai/jobs/:id', (req, res) => {
+    if (!connected || !oauthClient.credentials.access_token) {
+      return apiError(res, 401, 'NOT_CONNECTED', 'Connectez d’abord votre compte Gmail.');
+    }
+    if (!/^[a-f0-9-]{36}$/i.test(req.params.id)) {
+      return apiError(res, 400, 'INVALID_AI_JOB_ID', 'Identifiant d’analyse invalide.');
+    }
+    const job = aiJobs.get(req.params.id);
+    return job
+      ? res.json(job)
+      : apiError(res, 404, 'AI_JOB_NOT_FOUND', 'Cette analyse a expiré ou le backend a été redémarré.');
   });
 
   app.use((_req, res) => apiError(res, 404, 'NOT_FOUND', 'Route introuvable.'));

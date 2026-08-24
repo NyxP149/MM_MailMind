@@ -21,20 +21,72 @@ const recommendationLabels = {
   quarantaine: 'Quarantaine réversible',
 };
 
+const ACTIVE_JOB_KEY = 'mailmind:ai-active-job:v1';
+
+function readActiveJob() {
+  try {
+    return JSON.parse(sessionStorage.getItem(ACTIVE_JOB_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+
 function domainOf(email) {
   return email?.from?.email?.split('@')[1]?.toLowerCase() || 'domaine inconnu';
 }
 
-export function AIAssistant({ emails, configured, model }) {
-  const [selectedId, setSelectedId] = useState(emails[0]?.id || '');
+export function AIAssistant({ emails, configured, model, provider }) {
+  const activeJob = useMemo(readActiveJob, []);
+  const [selectedId, setSelectedId] = useState(activeJob.messageId || emails[0]?.id || '');
   const [consented, setConsented] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [jobId, setJobId] = useState(activeJob.jobId || '');
+  const [loading, setLoading] = useState(Boolean(activeJob.jobId));
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
 
   useEffect(() => {
-    if (!emails.some((email) => email.id === selectedId)) setSelectedId(emails[0]?.id || '');
-  }, [emails, selectedId]);
+    if (!jobId && !emails.some((email) => email.id === selectedId)) setSelectedId(emails[0]?.id || '');
+  }, [emails, jobId, selectedId]);
+
+  useEffect(() => {
+    if (!jobId) return undefined;
+    let active = true;
+    let timer;
+
+    const poll = async () => {
+      try {
+        const job = await api.getAIAnalysisJob(jobId);
+        if (!active) return;
+        if (job.status === 'completed') {
+          setResult(job.result);
+          setError('');
+          setLoading(false);
+          return;
+        }
+        if (job.status === 'failed') {
+          setError(job.error?.message || 'L’analyse IA a échoué.');
+          setLoading(false);
+          sessionStorage.removeItem(ACTIVE_JOB_KEY);
+          setJobId('');
+          return;
+        }
+        setLoading(true);
+        timer = window.setTimeout(poll, 1500);
+      } catch (requestError) {
+        if (!active) return;
+        setError(requestError.message);
+        setLoading(false);
+        sessionStorage.removeItem(ACTIVE_JOB_KEY);
+        setJobId('');
+      }
+    };
+
+    poll();
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [jobId]);
 
   const selected = useMemo(() => emails.find((email) => email.id === selectedId), [emails, selectedId]);
 
@@ -43,6 +95,8 @@ export function AIAssistant({ emails, configured, model }) {
     setConsented(false);
     setResult(null);
     setError('');
+    setJobId('');
+    sessionStorage.removeItem(ACTIVE_JOB_KEY);
   };
 
   const analyze = async () => {
@@ -51,19 +105,21 @@ export function AIAssistant({ emails, configured, model }) {
     setError('');
     setResult(null);
     try {
-      const response = await api.analyzeEmail({
+      const job = await api.startAIAnalysis({
         subject: selected.subject,
         senderDomain: domainOf(selected),
         snippet: selected.snippet,
         ruleSuggestion: selected.classification?.label || 'Autre',
       });
-      setResult(response);
+      sessionStorage.setItem(ACTIVE_JOB_KEY, JSON.stringify({ jobId: job.id, messageId: selected.id }));
+      setJobId(job.id);
     } catch (requestError) {
       setError(requestError.message);
-    } finally {
       setLoading(false);
     }
   };
+
+  const providerLabel = provider === 'ollama' ? 'Ollama local' : 'OpenAI';
 
   return (
     <section className="ai-assistant">
@@ -79,7 +135,7 @@ export function AIAssistant({ emails, configured, model }) {
       {!configured ? (
         <div className="ai-setup" role="status">
           <LockKeyhole size={24} />
-          <div><strong>Assistant IA non configuré</strong><p>Ajoutez <code>OPENAI_API_KEY</code> dans <code>backend/.env</code>, puis redémarrez MailMind.</p></div>
+          <div><strong>Assistant IA non configuré</strong><p>Configurez <code>AI_PROVIDER</code> dans <code>backend/.env</code>, puis redémarrez MailMind.</p></div>
         </div>
       ) : (
         <div className="ai-workspace">
@@ -87,7 +143,7 @@ export function AIAssistant({ emails, configured, model }) {
             <div className="ai-section-head"><div><span>01</span><div><h3>Choisir un message</h3><p>Sélection parmi les e-mails déjà chargés.</p></div></div><small>{model}</small></div>
             <label className="ai-message-select">
               <span>Message à analyser</span>
-              <select value={selectedId} onChange={changeMessage}>
+              <select value={selectedId} onChange={changeMessage} disabled={loading}>
                 {emails.map((email) => <option key={email.id} value={email.id}>{email.from.name} — {email.subject}</option>)}
               </select>
             </label>
@@ -103,7 +159,7 @@ export function AIAssistant({ emails, configured, model }) {
 
             <label className="ai-consent">
               <input type="checkbox" checked={consented} onChange={(event) => setConsented(event.target.checked)} />
-              <span>J’autorise l’envoi à OpenAI du sujet, du domaine expéditeur, de l’aperçu et de la suggestion locale affichés ci-dessus.</span>
+              <span>{provider === 'ollama' ? 'J’autorise l’analyse locale par Ollama' : 'J’autorise l’envoi à OpenAI'} du sujet, du domaine expéditeur, de l’aperçu et de la suggestion locale affichés ci-dessus.</span>
             </label>
             <button className="ai-analyze-button" onClick={analyze} disabled={!selected || !consented || loading}>
               {loading ? <LoaderCircle className="spin" size={18} /> : <Send size={18} />}
@@ -114,7 +170,9 @@ export function AIAssistant({ emails, configured, model }) {
 
           <div className="ai-result-card">
             <div className="ai-section-head"><div><span>02</span><div><h3>Lecture IA</h3><p>Résultat consultatif et explicable.</p></div></div><ShieldCheck size={20} /></div>
-            {result ? (
+            {loading ? (
+              <div className="ai-result-empty ai-result-loading" role="status" aria-live="polite"><LoaderCircle className="spin" size={35} /><strong>Analyse en cours avec {providerLabel}</strong><span>Vous pouvez changer de vue ou recharger la page : le traitement continuera en arrière-plan.</span></div>
+            ) : result ? (
               <div className="ai-result">
                 <div className="ai-result-top">
                   <span className={`ai-risk risk-${result.analysis.riskLevel}`}>Risque {result.analysis.riskLevel}</span>
@@ -136,7 +194,7 @@ export function AIAssistant({ emails, configured, model }) {
         </div>
       )}
 
-      <div className="ai-safety"><ShieldCheck size={16} /> Réponse non stockée par la requête MailMind. Aucune modification Gmail, aucune suppression automatique.</div>
+      <div className="ai-safety"><ShieldCheck size={16} /> {provider === 'ollama' ? 'Analyse effectuée localement par Ollama.' : 'Réponse non stockée par la requête MailMind.'} Aucune modification Gmail, aucune suppression automatique.</div>
     </section>
   );
 }

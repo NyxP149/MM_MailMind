@@ -423,7 +423,7 @@ export default function App() {
           {activeView === 'learning' && !loading ? (
             <LearningDashboard examples={learningExamples} onReset={resetLearning} />
           ) : activeView === 'assistant' && !loading ? (
-            <AIAssistant emails={effectiveEmails} configured={status.ai?.configured} model={status.ai?.model} />
+            <AIAssistant emails={effectiveEmails} configured={status.ai?.configured} model={status.ai?.model} provider={status.ai?.provider} />
           ) : activeView === 'rules' && !loading ? (
             <RulesManager rules={customRules} onAdd={addCustomRule} onToggle={toggleCustomRule} onDelete={deleteCustomRule} />
           ) : activeView === 'dashboard' && !loading ? (

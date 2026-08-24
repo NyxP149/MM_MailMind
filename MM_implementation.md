@@ -81,6 +81,8 @@ Les événements sont stockés sous `mailmind:action-history:v1` dans `localStor
 
 Le frontend envoie uniquement `subject`, `senderDomain`, `snippet` et `ruleSuggestion`. `AIAssistant.jsx` montre ces valeurs avant l'envoi, exige une case de consentement et présente séparément le résultat. Le composant ne reçoit aucun callback de mutation Gmail et ne peut donc exécuter ni quarantaine, ni restauration, ni suppression.
 
+`backend/src/ai-jobs.js` exécute chaque demande dans une tâche mémoire indépendante de la connexion HTTP du navigateur. Le frontend conserve seulement l'identifiant opaque de la tâche dans `sessionStorage` et interroge son état au retour sur la vue. Une navigation ou un rechargement n'interrompt donc plus Ollama. Les résultats temporaires expirent après 30 minutes et ne survivent pas au redémarrage du backend.
+
 ## Implémentation de l'apprentissage V6
 
 `classification.js` expose `extractLearningSignals`, `createLearningExample`, `upsertLearningExample`, `buildLearningModel`, `applyLearnedPreferences` et `computeLearningMetrics`. Les exemples sont stockés sous `mailmind:learning-examples:v1` et limités aux 500 plus récents. Une empreinte FNV locale remplace l'identifiant Gmail pour dédupliquer les corrections d'un même message.
@@ -244,6 +246,8 @@ Le client Google émet aussi un événement `tokens`; celui-ci maintient le drap
 | `POST /api/auth/logout` | Révoque les identifiants si possible, puis vide toujours l’état local. |
 | `GET /api/emails` | Retourne une page de messages normalisés ; accepte `limit` et `pageToken`. |
 | `POST /api/ai/analyze` | Analyse un message minimisé après consentement explicite ; ne modifie pas Gmail. |
+| `POST /api/ai/jobs` | Démarre une analyse temporaire indépendante de la page et retourne son identifiant. |
+| `GET /api/ai/jobs/:id` | Consulte l'état ou le résultat temporaire d'une analyse. |
 
 Les erreurs API ont la forme `{ "error": { "code": "…", "message": "…" } }`. Une route inconnue renvoie `404/NOT_FOUND`, une lecture sans connexion `401/NOT_CONNECTED`, et une erreur Gmail `502/GMAIL_ERROR`.
 

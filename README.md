@@ -149,6 +149,8 @@ OLLAMA_MODEL=qwen3:4b
 
 Ollama doit rester démarré pendant l'utilisation de l'Assistant. Les données minimisées restent sur la machine et aucune clé API n'est nécessaire.
 
+Les analyses sont lancées comme des tâches backend temporaires. Elles continuent si l'utilisateur change de vue ou recharge l'interface, puis le résultat est récupéré automatiquement au retour dans l'Assistant. Les résultats expirent après 30 minutes et disparaissent au redémarrage du backend.
+
 ### OpenAI — optionnel
 
 Pour utiliser OpenAI à la place, ajoutez :

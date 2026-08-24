@@ -90,6 +90,8 @@ npm run dev
 - frontend : `http://localhost:5173` ;
 - santé de l'API : `http://localhost:3000/api/health`.
 
+Avec Ollama, le modèle reste chargé quelques minutes après une analyse. Sur une machine sans accélération GPU, une requête locale peut prendre plusieurs dizaines de secondes ; l'interface la poursuit en arrière-plan et récupère son résultat au retour sur la vue Assistant.
+
 Dans Google Cloud, l'URI de redirection autorisée doit correspondre **exactement** à `http://localhost:3000/api/auth/google/callback`. Ajouter le compte Gmail dans les utilisateurs tests si l'écran de consentement est encore en mode test.
 
 ## Variables d'environnement et secrets
