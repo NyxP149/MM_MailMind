@@ -103,6 +103,10 @@ Les rapports sont stockés sous `mailmind:agent-reports:v1`, limités aux 30 plu
 
 Les routes `/api/agent/schedule` permettent de lire, activer ou désactiver l’horaire ; `/run` déclenche une simulation immédiate et `/reports` expose les 20 derniers rapports en mémoire. L’activation exige `X-MailMind-Agent-Consent: schedule-simulation`. `AgentControl.jsx` expose l’heure, la taille du lot et le fuseau local, puis rappelle explicitement que la tâche ne modifie pas Gmail. Une déconnexion désactive la planification ; un redémarrage efface la configuration et les rapports planifiés.
 
+### Centre d’activité V7.2
+
+`buildAgentActivity()` fusionne les rapports conservés dans le navigateur et ceux de l’ordonnanceur backend. La fonction ignore les entrées incomplètes, déduplique par identifiant, trie par `completedAt` décroissant et calcule les volumes d’exécutions, messages analysés, simulations, lots contrôlés, actions et échecs. `AgentControl.jsx` affiche cette synthèse, quatre filtres et dix lignes au maximum. L’export global ajoute uniquement une version de format, sa date de génération, les métriques et les rapports minimisés existants.
+
 
 ```text
 Navigateur React

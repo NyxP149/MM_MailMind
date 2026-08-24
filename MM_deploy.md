@@ -102,6 +102,8 @@ La V7.1 propose une simulation quotidienne côté backend. Elle peut fonctionner
 
 Ne pas considérer cette fonction comme un ordonnanceur de production. Avant toute persistance ou exécution réelle planifiée, ajouter : stockage chiffré des jetons OAuth, séparation des utilisateurs, base durable, ordonnanceur avec verrou distribué ou transactionnel, politique de reprise, rétention d’audit définie et mécanisme explicite de révocation.
 
+Le centre d’activité V7.2 ne requiert aucune variable ni permission supplémentaire. Les rapports manuels restent liés au stockage local du navigateur ; les rapports planifiés restent liés au processus backend. Un export JSON constitue une copie locale sous le contrôle de l’utilisateur : il faut l’archiver ou le supprimer selon la politique de confidentialité personnelle, même s’il ne contient pas le contenu des e-mails.
+
 Dans Google Cloud, l'URI de redirection autorisée doit correspondre **exactement** à `http://localhost:3000/api/auth/google/callback`. Ajouter le compte Gmail dans les utilisateurs tests si l'écran de consentement est encore en mode test.
 
 ## Variables d'environnement et secrets

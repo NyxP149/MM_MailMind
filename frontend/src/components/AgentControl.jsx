@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, AlertTriangle, Bot, CalendarClock, CheckCircle2, Download, Eye, Octagon, Play, Power, RefreshCw, ShieldCheck, Tags } from 'lucide-react';
-import { AGENT_CATEGORY_OPTIONS, DEFAULT_AGENT_POLICY, buildAgentPlan, createAgentReport } from '../agent.js';
+import { Activity, AlertTriangle, Bot, CalendarClock, CheckCircle2, Download, Eye, History, Octagon, Play, Power, RefreshCw, ShieldCheck, Tags } from 'lucide-react';
+import { AGENT_CATEGORY_OPTIONS, DEFAULT_AGENT_POLICY, buildAgentActivity, buildAgentPlan, createAgentReport } from '../agent.js';
 import { api } from '../api.js';
 
 function formatDate(value) {
@@ -17,6 +17,23 @@ function downloadReport(report) {
   URL.revokeObjectURL(url);
 }
 
+function reportModeLabel(mode) {
+  if (mode === 'controlled') return 'Lot contrôlé';
+  if (mode === 'scheduled-simulation') return 'Simulation planifiée';
+  return 'Simulation manuelle';
+}
+
+function downloadActivity(activity) {
+  const bundle = { version: 1, generatedAt: new Date().toISOString(), metrics: activity.metrics, reports: activity.reports };
+  const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `mailmind-activite-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export function AgentControl({ emails, decisions, reports, onSaveReport, onQuarantine }) {
   const [policy, setPolicy] = useState(DEFAULT_AGENT_POLICY);
   const [liveMode, setLiveMode] = useState(false);
@@ -29,10 +46,17 @@ export function AgentControl({ emails, decisions, reports, onSaveReport, onQuara
   const [scheduledReports, setScheduledReports] = useState([]);
   const [scheduleBusy, setScheduleBusy] = useState(false);
   const [scheduleError, setScheduleError] = useState('');
+  const [activityFilter, setActivityFilter] = useState('all');
   const stopRequested = useRef(false);
   const plan = useMemo(() => buildAgentPlan(emails, policy, decisions), [decisions, emails, policy]);
   const latest = reports[0];
   const latestScheduled = scheduledReports[0];
+  const activity = useMemo(() => buildAgentActivity(reports, scheduledReports), [reports, scheduledReports]);
+  const visibleActivity = useMemo(() => activity.reports.filter((report) => {
+    if (activityFilter === 'all') return true;
+    if (activityFilter === 'scheduled') return report.mode === 'scheduled-simulation';
+    return report.mode === activityFilter;
+  }).slice(0, 10), [activity, activityFilter]);
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
   useEffect(() => {
@@ -200,6 +224,26 @@ export function AgentControl({ emails, decisions, reports, onSaveReport, onQuara
             {latestScheduled ? <><strong>{formatDate(latestScheduled.completedAt)}</strong><p>{latestScheduled.metrics.analyzed} analysés · {latestScheduled.metrics.eligible} proposés · {latestScheduled.metrics.ambiguous} ambigus</p><span><ShieldCheck size={14} /> 0 action Gmail exécutée</span></> : <><strong>Aucune simulation planifiée</strong><p>Utilisez « Simuler maintenant » ou activez l’horaire quotidien.</p></>}
           </div>
         </div>
+      </section>
+
+      <section className="agent-activity-center">
+        <header>
+          <div className="agent-schedule-title"><span className="agent-metric-icon violet"><History size={18} /></span><div><span className="eyebrow">Centre d’activité V7.2</span><h3>Historique unifié de l’agent</h3><p>Simulations manuelles, planifications et lots contrôlés réunis dans un journal minimisé.</p></div></div>
+          <button disabled={!activity.reports.length} onClick={() => downloadActivity(activity)}><Download size={15} /> Exporter tout</button>
+        </header>
+        <div className="agent-activity-summary">
+          <span><b>{activity.metrics.runs}</b> exécutions</span><span><b>{activity.metrics.analyzed}</b> messages analysés</span><span><b>{activity.metrics.simulations}</b> simulations</span><span><b>{activity.metrics.executed}</b> actions</span>
+        </div>
+        <div className="agent-activity-filters" aria-label="Filtrer l’historique">
+          {[['all', 'Tout'], ['simulation', 'Manuelles'], ['scheduled', 'Planifiées'], ['controlled', 'Contrôlées']].map(([value, label]) => <button key={value} className={activityFilter === value ? 'selected' : ''} onClick={() => setActivityFilter(value)}>{label}</button>)}
+        </div>
+        {visibleActivity.length ? <div className="agent-activity-list">{visibleActivity.map((report) => <article key={report.id}>
+          <span className={`agent-activity-mode ${report.mode}`}>{reportModeLabel(report.mode)}</span>
+          <div><strong>{formatDate(report.completedAt)}</strong><small>{report.metrics.analyzed} analysés · {report.metrics.eligible || 0} proposés · {report.metrics.ambiguous || 0} ambigus</small></div>
+          <div className="agent-activity-result"><b>{report.metrics.executed || 0}</b><span>action(s)</span></div>
+          <span className={`agent-activity-status ${report.status}`}>{report.status === 'interrupted' ? 'Interrompu' : report.metrics.failed ? `${report.metrics.failed} échec(s)` : 'Terminé'}</span>
+          <button onClick={() => downloadReport(report)} title="Exporter ce rapport"><Download size={14} /></button>
+        </article>)}</div> : <div className="agent-activity-empty"><History size={28} /><strong>Aucun rapport dans ce filtre</strong><span>Les prochaines exécutions apparaîtront ici sans contenu d’e-mail.</span></div>}
       </section>
 
       {plan.ambiguous.length > 0 && <div className="agent-warning"><AlertTriangle size={17} /><span><strong>{plan.ambiguous.length} cas nécessitent votre attention.</strong> Ils resteront inchangés : confiance insuffisante ou catégorie non autorisée.</span></div>}

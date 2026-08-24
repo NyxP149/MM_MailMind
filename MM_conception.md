@@ -119,6 +119,8 @@ Chaque lot produit un rapport local limité aux métriques, catégories, politiq
 
 La V7.1 ajoute une planification quotidienne en mémoire côté backend. Elle reprend uniquement le seuil, les catégories autorisées, l’heure, le fuseau et la taille du lot. Elle relit Gmail et génère une **simulation** anonymisée, mais n’appelle aucune route de mutation : les corrections humaines et règles personnalisées étant locales au navigateur, aucune action autonome ne serait suffisamment sûre. Cette tâche peut tourner navigateur fermé tant que le backend et la session OAuth en mémoire restent actifs. La configuration et les 20 rapports planifiés disparaissent au redémarrage ou à la déconnexion. Une planification durable demeure conditionnée à des jetons chiffrés, des sessions isolées et un ordonnanceur persistant.
 
+La V7.2 ajoute une vue d’audit unifiée sans créer une nouvelle source de données. Les rapports locaux et planifiés déjà minimisés sont dédupliqués, triés par date et agrégés en compteurs. L’utilisateur peut distinguer simulation manuelle, planifiée et lot contrôlé, puis exporter un élément ou le journal complet. Les filtres et l’agrégation restent purement locaux ; ils ne déclenchent aucune requête Gmail ni action.
+
 ## 4. Architecture conceptuelle
 
 ```text

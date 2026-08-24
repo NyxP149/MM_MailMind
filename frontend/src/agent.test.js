@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildAgentPlan, createAgentReport } from './agent.js';
+import { buildAgentActivity, buildAgentPlan, createAgentReport } from './agent.js';
 
 const email = (id, category, confidence, extra = {}) => ({
   id,
@@ -43,5 +43,18 @@ describe('agent V7', () => {
     expect(report.metrics.executed).toBe(1);
     expect(JSON.stringify(report)).not.toContain('sensitive-gmail-id');
     expect(report.events[0].messageFingerprint).toMatch(/^agent-/);
+  });
+
+  it('agrège et trie l’activité sans dupliquer les rapports', () => {
+    const metrics = { analyzed: 10, executed: 0, failed: 0 };
+    const activity = buildAgentActivity([
+      { id: 'manual', mode: 'controlled', completedAt: '2026-08-24T09:00:00.000Z', metrics: { ...metrics, executed: 2 } },
+    ], [
+      { id: 'scheduled', mode: 'scheduled-simulation', completedAt: '2026-08-24T10:00:00.000Z', metrics },
+      { id: 'manual', mode: 'controlled', completedAt: '2026-08-24T09:00:00.000Z', metrics },
+    ]);
+
+    expect(activity.reports.map((report) => report.id)).toEqual(['scheduled', 'manual']);
+    expect(activity.metrics).toEqual({ runs: 2, analyzed: 20, executed: 2, failed: 0, simulations: 1, controlled: 1 });
   });
 });

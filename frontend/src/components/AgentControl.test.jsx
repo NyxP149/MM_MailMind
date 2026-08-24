@@ -75,4 +75,17 @@ describe('Agent contrôlé V7', () => {
     });
     expect(await screen.findByText('Active')).toBeInTheDocument();
   });
+
+  it('réunit et filtre les rapports manuels et planifiés', async () => {
+    const base = { status: 'completed', categories: [], metrics: { analyzed: 10, eligible: 1, ambiguous: 0, executed: 0, failed: 0 } };
+    apiMocks.getAgentScheduleReports.mockResolvedValue({ reports: [{ ...base, id: 'scheduled', mode: 'scheduled-simulation', completedAt: '2026-08-24T10:00:00.000Z' }] });
+    render(<AgentControl emails={emails} reports={[{ ...base, id: 'manual', mode: 'simulation', completedAt: '2026-08-24T09:00:00.000Z' }]} onSaveReport={vi.fn()} onQuarantine={vi.fn()} />);
+
+    expect(await screen.findByText('Simulation planifiée')).toBeInTheDocument();
+    expect(screen.getByText('Simulation manuelle')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Planifiées' }));
+
+    await waitFor(() => expect(screen.queryByText('Simulation manuelle')).not.toBeInTheDocument());
+    expect(screen.getByText('Simulation planifiée')).toBeInTheDocument();
+  });
 });

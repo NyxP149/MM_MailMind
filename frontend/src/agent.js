@@ -99,3 +99,23 @@ export function createAgentReport(plan, {
     })),
   };
 }
+
+export function buildAgentActivity(localReports = [], scheduledReports = []) {
+  const seen = new Set();
+  const reports = [...localReports, ...scheduledReports]
+    .filter((report) => report?.id && report?.completedAt && report?.metrics && !seen.has(report.id) && seen.add(report.id))
+    .sort((left, right) => new Date(right.completedAt) - new Date(left.completedAt));
+
+  return {
+    reports,
+    metrics: reports.reduce((summary, report) => {
+      summary.runs += 1;
+      summary.analyzed += Number(report.metrics.analyzed) || 0;
+      summary.executed += Number(report.metrics.executed) || 0;
+      summary.failed += Number(report.metrics.failed) || 0;
+      if (report.mode === 'controlled') summary.controlled += 1;
+      else summary.simulations += 1;
+      return summary;
+    }, { runs: 0, analyzed: 0, executed: 0, failed: 0, simulations: 0, controlled: 0 }),
+  };
+}

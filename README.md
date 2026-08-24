@@ -203,3 +203,7 @@ L’agent peut uniquement ajouter `MailMind/Quarantine`. Il ignore les messages 
 La vue **Agent contrôlé** permet aussi d’activer une simulation quotidienne à une heure locale et pour un lot de 10, 20 ou 50 messages. Cette tâche est exécutée par le backend : elle peut donc continuer si l’onglet ou le navigateur est fermé, à condition que `npm run dev` reste lancé et que la connexion Gmail en mémoire soit encore valide. Elle ne pose jamais de label et produit uniquement un rapport anonymisé à valider manuellement.
 
 Cette planification locale n’est pas durable : sa configuration et ses 20 derniers rapports disparaissent au redémarrage du backend ou à la déconnexion. Une planification de production persistante nécessitera toujours une base de données, un stockage chiffré des jetons OAuth, des sessions isolées par utilisateur et un ordonnanceur durable.
+
+### Centre d’activité V7.2
+
+Le centre d’activité réunit les simulations manuelles, les simulations planifiées et les lots contrôlés. Il affiche les volumes analysés et exécutés, permet de filtrer les dix rapports les plus récents et d’exporter un rapport ou l’historique complet en JSON. L’agrégation déduplique les rapports par identifiant et conserve leur ordre chronologique. Les exports restent minimisés : aucun sujet, expéditeur, extrait ou identifiant Gmail n’y est ajouté.
