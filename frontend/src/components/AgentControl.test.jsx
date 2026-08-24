@@ -1,6 +1,16 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentControl } from './AgentControl.jsx';
+
+const apiMocks = vi.hoisted(() => ({
+  getAgentSchedule: vi.fn(),
+  getAgentScheduleReports: vi.fn(),
+  saveAgentSchedule: vi.fn(),
+  disableAgentSchedule: vi.fn(),
+  runAgentScheduleNow: vi.fn(),
+}));
+
+vi.mock('../api.js', () => ({ api: apiMocks }));
 
 const emails = [{
   id: 'message-agent',
@@ -10,6 +20,12 @@ const emails = [{
 }];
 
 describe('Agent contrôlé V7', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    apiMocks.getAgentSchedule.mockResolvedValue({ enabled: false, time: '08:00', maxMessages: 50 });
+    apiMocks.getAgentScheduleReports.mockResolvedValue({ reports: [] });
+  });
+
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
@@ -43,5 +59,20 @@ describe('Agent contrôlé V7', () => {
     await waitFor(() => expect(onQuarantine).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(onSaveReport).toHaveBeenCalledTimes(1));
     expect(onSaveReport.mock.calls[0][0].metrics.executed).toBe(1);
+  });
+
+  it('active une planification qui reste une simulation', async () => {
+    apiMocks.saveAgentSchedule.mockResolvedValue({ enabled: true, time: '08:00', maxMessages: 50 });
+    render(<AgentControl emails={emails} reports={[]} onSaveReport={vi.fn()} onQuarantine={vi.fn()} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Activer' }));
+
+    await waitFor(() => expect(apiMocks.saveAgentSchedule).toHaveBeenCalledTimes(1));
+    expect(apiMocks.saveAgentSchedule.mock.calls[0][0]).toMatchObject({
+      threshold: 0.9,
+      categories: ['adultes', 'rencontres', 'spam', 'arnaque'],
+      maxMessages: 50,
+    });
+    expect(await screen.findByText('Active')).toBeInTheDocument();
   });
 });

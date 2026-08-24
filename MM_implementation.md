@@ -97,6 +97,12 @@ Le pipeline de classement est : moteur automatique backend, première règle V4 
 
 Les rapports sont stockés sous `mailmind:agent-reports:v1`, limités aux 30 plus récents et exportables en JSON. Les actions réussies rejoignent également `mailmind:action-history:v1` avec `source: agent-v7` et l’identifiant du lot. Une reprise recalcule le plan depuis Gmail et ignore les messages déjà labellisés, ce qui assure l’idempotence sans base de données.
 
+### Planification V7.1
+
+`backend/src/agent-scheduler.js` contient l’ordonnanceur quotidien en mémoire. `normalizeSchedule()` valide l’heure et le fuseau, borne le seuil entre 80 et 99 %, filtre les catégories autorisées et limite le lot à 50 messages. Le contrôle toutes les 30 secondes n’exécute qu’une fois la date locale prévue. `buildScheduledReport()` agrège uniquement les compteurs et catégories ; il fixe toujours `executed: 0` et ne conserve aucun identifiant ou contenu Gmail.
+
+Les routes `/api/agent/schedule` permettent de lire, activer ou désactiver l’horaire ; `/run` déclenche une simulation immédiate et `/reports` expose les 20 derniers rapports en mémoire. L’activation exige `X-MailMind-Agent-Consent: schedule-simulation`. `AgentControl.jsx` expose l’heure, la taille du lot et le fuseau local, puis rappelle explicitement que la tâche ne modifie pas Gmail. Une déconnexion désactive la planification ; un redémarrage efface la configuration et les rapports planifiés.
+
 
 ```text
 Navigateur React

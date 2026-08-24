@@ -198,4 +198,8 @@ La vue **Agent contrôlé** construit un plan sur les messages déjà chargés. 
 
 L’agent peut uniquement ajouter `MailMind/Quarantine`. Il ignore les messages déjà labellisés, laisse tous les cas ambigus inchangés et peut être interrompu entre deux actions. Les rapports locaux sont limités aux 30 plus récents et contiennent des compteurs, catégories, résultats et empreintes non réversibles — jamais de sujet, d’expéditeur, d’extrait ou d’identifiant Gmail.
 
-La planification quotidienne lorsque l’application est fermée reste volontairement désactivée : elle nécessitera auparavant une persistance chiffrée des jetons OAuth, un ordonnanceur backend et une politique de reprise durable.
+### Planification V7.1
+
+La vue **Agent contrôlé** permet aussi d’activer une simulation quotidienne à une heure locale et pour un lot de 10, 20 ou 50 messages. Cette tâche est exécutée par le backend : elle peut donc continuer si l’onglet ou le navigateur est fermé, à condition que `npm run dev` reste lancé et que la connexion Gmail en mémoire soit encore valide. Elle ne pose jamais de label et produit uniquement un rapport anonymisé à valider manuellement.
+
+Cette planification locale n’est pas durable : sa configuration et ses 20 derniers rapports disparaissent au redémarrage du backend ou à la déconnexion. Une planification de production persistante nécessitera toujours une base de données, un stockage chiffré des jetons OAuth, des sessions isolées par utilisateur et un ordonnanceur durable.

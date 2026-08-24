@@ -12,6 +12,7 @@ import {
 import { isValidMessageId, quarantineMessage, restoreMessage } from './gmail-actions.js';
 import { AIServiceError, analyzeEmailWithAI } from './ai.js';
 import { createAIJobManager } from './ai-jobs.js';
+import { createAgentScheduler } from './agent-scheduler.js';
 
 const OAUTH_COOKIE = 'mailmind_oauth_state';
 
@@ -25,6 +26,12 @@ export function createApp(config) {
   let connected = false;
   const auditLog = [];
   const aiJobs = createAIJobManager();
+  const agentScheduler = createAgentScheduler({
+    scan: async (maxMessages) => {
+      if (!connected || !oauthClient.credentials.access_token) throw new Error('Gmail non connecté');
+      return (await listMessages(oauthClient, { maxResults: maxMessages })).messages;
+    },
+  });
 
   oauthClient.on('tokens', (tokens) => {
     if (tokens.access_token || tokens.refresh_token) connected = true;
@@ -127,6 +134,7 @@ export function createApp(config) {
     } finally {
       connected = false;
       oauthClient.setCredentials({});
+      agentScheduler.reset();
     }
     res.status(204).end();
   });
@@ -181,6 +189,42 @@ export function createApp(config) {
   app.get('/api/audit', (_req, res) => {
     if (!connected) return apiError(res, 401, 'NOT_CONNECTED', 'Connectez d’abord votre compte Gmail.');
     return res.json({ events: auditLog });
+  });
+
+  app.get('/api/agent/schedule', (_req, res) => {
+    if (!connected) return apiError(res, 401, 'NOT_CONNECTED', 'Connectez d’abord votre compte Gmail.');
+    return res.json(agentScheduler.status());
+  });
+
+  app.put('/api/agent/schedule', (req, res) => {
+    if (!connected) return apiError(res, 401, 'NOT_CONNECTED', 'Connectez d’abord votre compte Gmail.');
+    if (req.get('x-mailmind-agent-consent') !== 'schedule-simulation') {
+      return apiError(res, 409, 'AGENT_CONSENT_REQUIRED', 'Confirmez explicitement la planification de simulations Gmail.');
+    }
+    return res.json(agentScheduler.configure({ ...req.body, enabled: true }));
+  });
+
+  app.delete('/api/agent/schedule', (_req, res) => {
+    if (!connected) return apiError(res, 401, 'NOT_CONNECTED', 'Connectez d’abord votre compte Gmail.');
+    return res.json(agentScheduler.disable());
+  });
+
+  app.post('/api/agent/schedule/run', async (_req, res) => {
+    if (!connected) return apiError(res, 401, 'NOT_CONNECTED', 'Connectez d’abord votre compte Gmail.');
+    try {
+      const report = await agentScheduler.run();
+      return report
+        ? res.json(report)
+        : apiError(res, 409, 'AGENT_ALREADY_RUNNING', 'Une simulation planifiée est déjà en cours.');
+    } catch (error) {
+      console.error('Scheduled agent run failed:', error.message);
+      return apiError(res, 502, 'AGENT_SCHEDULE_FAILED', 'La simulation planifiée n’a pas pu analyser Gmail.');
+    }
+  });
+
+  app.get('/api/agent/schedule/reports', (_req, res) => {
+    if (!connected) return apiError(res, 401, 'NOT_CONNECTED', 'Connectez d’abord votre compte Gmail.');
+    return res.json({ reports: agentScheduler.reports() });
   });
 
   app.post('/api/ai/analyze', async (req, res) => {

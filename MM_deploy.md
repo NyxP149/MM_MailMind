@@ -98,7 +98,9 @@ L’agent V7 s’exécute uniquement lorsque MailMind et le backend sont actifs.
 
 Les 30 derniers rapports sont stockés dans le `localStorage` du navigateur sous `mailmind:agent-reports:v1`. Ils ne contiennent pas de contenu d’e-mail, mais doivent tout de même être considérés comme des données locales d’audit. Effacer les données du site supprime ces rapports. L’export JSON est volontairement minimisé.
 
-Ne pas transformer cette version en tâche quotidienne serveur sans ajouter auparavant : stockage chiffré des jetons OAuth, séparation des utilisateurs, ordonnanceur durable, verrou distribué ou transactionnel, rétention d’audit définie et mécanisme explicite de révocation.
+La V7.1 propose une simulation quotidienne côté backend. Elle peut fonctionner navigateur fermé, mais uniquement tant que le processus backend reste actif et que sa connexion OAuth en mémoire est valide. Elle n’exécute aucune action Gmail. La configuration et les 20 rapports planifiés sont volatils : redémarrer le backend ou se déconnecter les efface. Pour vérifier le fonctionnement local, garder `npm run dev` ouvert, activer l’horaire dans **Agent contrôlé**, puis utiliser d’abord **Simuler maintenant**.
+
+Ne pas considérer cette fonction comme un ordonnanceur de production. Avant toute persistance ou exécution réelle planifiée, ajouter : stockage chiffré des jetons OAuth, séparation des utilisateurs, base durable, ordonnanceur avec verrou distribué ou transactionnel, politique de reprise, rétention d’audit définie et mécanisme explicite de révocation.
 
 Dans Google Cloud, l'URI de redirection autorisée doit correspondre **exactement** à `http://localhost:3000/api/auth/google/callback`. Ajouter le compte Gmail dans les utilisateurs tests si l'écran de consentement est encore en mode test.
 

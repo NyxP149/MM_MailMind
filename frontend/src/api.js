@@ -42,5 +42,14 @@ export const api = {
     body: JSON.stringify({ email }),
   }),
   getAIAnalysisJob: (id) => request(`/api/ai/jobs/${encodeURIComponent(id)}`),
+  getAgentSchedule: () => request('/api/agent/schedule'),
+  saveAgentSchedule: (schedule) => request('/api/agent/schedule', {
+    method: 'PUT',
+    headers: { 'X-MailMind-Agent-Consent': 'schedule-simulation' },
+    body: JSON.stringify(schedule),
+  }),
+  disableAgentSchedule: () => request('/api/agent/schedule', { method: 'DELETE' }),
+  runAgentScheduleNow: () => request('/api/agent/schedule/run', { method: 'POST' }),
+  getAgentScheduleReports: () => request('/api/agent/schedule/reports'),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
 };

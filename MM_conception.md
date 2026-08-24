@@ -115,7 +115,9 @@ La V7 introduit une autonomie bornée sur les messages déjà chargés. Une poli
 
 Une exécution réelle nécessite l’activation du mode contrôlé, l’armement explicite du lot et une confirmation récapitulant le nombre d’actions. La seule capacité accordée est l’ajout du label réversible `MailMind/Quarantine`. L’arrêt empêche toute nouvelle action après celle éventuellement déjà engagée. L’idempotence repose sur l’état `quarantined` : un message déjà labellisé est ignoré lors d’une reprise.
 
-Chaque lot produit un rapport local limité aux métriques, catégories, politique, état, erreurs et empreintes non réversibles. Aucun contenu, expéditeur ou identifiant Gmail n’est enregistré dans le rapport. Une véritable planification lorsque l’application est fermée reste hors périmètre tant que les jetons OAuth ne disposent pas d’une persistance chiffrée et que le backend ne possède pas d’ordonnanceur durable.
+Chaque lot produit un rapport local limité aux métriques, catégories, politique, état, erreurs et empreintes non réversibles. Aucun contenu, expéditeur ou identifiant Gmail n’est enregistré dans le rapport.
+
+La V7.1 ajoute une planification quotidienne en mémoire côté backend. Elle reprend uniquement le seuil, les catégories autorisées, l’heure, le fuseau et la taille du lot. Elle relit Gmail et génère une **simulation** anonymisée, mais n’appelle aucune route de mutation : les corrections humaines et règles personnalisées étant locales au navigateur, aucune action autonome ne serait suffisamment sûre. Cette tâche peut tourner navigateur fermé tant que le backend et la session OAuth en mémoire restent actifs. La configuration et les 20 rapports planifiés disparaissent au redémarrage ou à la déconnexion. Une planification durable demeure conditionnée à des jetons chiffrés, des sessions isolées et un ordonnanceur persistant.
 
 ## 4. Architecture conceptuelle
 
@@ -439,7 +441,7 @@ L'IA recommande ; elle ne déclenche pas seule une action destructive.
 - notifier les cas ambigus et permettre l'interruption immédiate ;
 - garantir audit, idempotence, reprise sur erreur et récupération.
 
-L’état actuel couvre les lots contrôlés déclenchés par l’utilisateur, l’audit local, l’arrêt, l’idempotence et la reprise manuelle. L’ordonnancement quotidien hors session reste l’évolution suivante, conditionnée par une architecture de secrets et de persistance adaptée.
+L’état actuel couvre les lots contrôlés déclenchés par l’utilisateur, l’audit local, l’arrêt, l’idempotence et la reprise manuelle. Une simulation quotidienne en mémoire peut fonctionner sans onglet ouvert tant que le backend reste actif. L’ordonnancement durable après redémarrage reste conditionné par une architecture de secrets, de sessions et de persistance adaptée.
 
 ## 13. Principes de conception durables
 
