@@ -89,6 +89,14 @@ Le frontend envoie uniquement `subject`, `senderDomain`, `snippet` et `ruleSugge
 
 Le pipeline de classement est : moteur automatique backend, première règle V4 correspondante, préférence V6 active, puis correction manuelle propre au message. `LearningDashboard.jsx` présente la mémoire sans recopier les contenus Gmail et permet sa réinitialisation indépendante. Au chargement, les anciennes corrections V2 encore associées à un message présent sont importées progressivement dans la mémoire V6.
 
+## Implémentation de l'agent contrôlé V7
+
+`frontend/src/agent.js` construit un plan déterministe à partir des classifications effectives. La politique borne le plan par catégories et seuil de confiance, après exclusion prioritaire des messages marqués sûrs par l’utilisateur. Les décisions possibles sont `eligible`, `ambiguous`, `skipped` et `protected`. Une empreinte FNV locale remplace l’identifiant Gmail dans les rapports. `createAgentReport()` agrège la politique, les métriques, les catégories et les résultats d’action sans conserver le contenu des messages.
+
+`AgentControl.jsx` impose une simulation par défaut. Une exécution Gmail demande successivement l’activation du mode réel, l’armement du lot et la confirmation native du nombre d’actions. La boucle reste séquentielle afin que le bouton d’arrêt puisse empêcher les actions suivantes. Elle appelle exclusivement la route de quarantaine existante avec son en-tête de confirmation ; aucune nouvelle capacité Gmail n’a été créée.
+
+Les rapports sont stockés sous `mailmind:agent-reports:v1`, limités aux 30 plus récents et exportables en JSON. Les actions réussies rejoignent également `mailmind:action-history:v1` avec `source: agent-v7` et l’identifiant du lot. Une reprise recalcule le plan depuis Gmail et ignore les messages déjà labellisés, ce qui assure l’idempotence sans base de données.
+
 
 ```text
 Navigateur React

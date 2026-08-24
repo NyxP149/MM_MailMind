@@ -7,6 +7,7 @@
 > Mise à jour V4 : règles personnalisées locales sans automatisation Gmail implicite.
 
 > Mise à jour V5 : analyse IA facultative, unitaire et déclenchée uniquement après consentement.
+> Mise à jour V7 : agent contrôlé, simulation, lots réversibles et rapports d’activité minimisés.
 
 > Mise à jour V6 : apprentissage local, explicable et réinitialisable à partir des corrections.
 
@@ -107,6 +108,14 @@ Chaque correction de catégorie peut produire un exemple local minimisé : empre
 Un signal ne devient actif qu'après plusieurs observations concordantes : deux pour un domaine, trois pour un mot-clé, avec une cohérence minimale de 75 %. Une préférence apprise reste moins prioritaire qu'une correction manuelle ou qu'une règle V4 créée explicitement. Elle change uniquement la suggestion locale et ne déclenche aucune action Gmail.
 
 La vue Apprentissage rend visibles les signaux actifs, leur confiance et les observations encore insuffisantes. L'utilisateur peut réinitialiser toute la mémoire V6 sans effacer ses corrections de messages. La mémoire est bornée à 500 exemples dans `localStorage`.
+
+## Agent autonome contrôlé V7
+
+La V7 introduit une autonomie bornée sur les messages déjà chargés. Une politique locale définit le seuil de confiance et les catégories autorisées. Le plan sépare explicitement les actions éligibles, les cas ambigus, les messages protégés et les actions déjà réalisées. Une décision humaine « faux positif / sûr » est toujours prioritaire et exclut définitivement le message du lot courant. Le mode par défaut est une simulation sans effet Gmail.
+
+Une exécution réelle nécessite l’activation du mode contrôlé, l’armement explicite du lot et une confirmation récapitulant le nombre d’actions. La seule capacité accordée est l’ajout du label réversible `MailMind/Quarantine`. L’arrêt empêche toute nouvelle action après celle éventuellement déjà engagée. L’idempotence repose sur l’état `quarantined` : un message déjà labellisé est ignoré lors d’une reprise.
+
+Chaque lot produit un rapport local limité aux métriques, catégories, politique, état, erreurs et empreintes non réversibles. Aucun contenu, expéditeur ou identifiant Gmail n’est enregistré dans le rapport. Une véritable planification lorsque l’application est fermée reste hors périmètre tant que les jetons OAuth ne disposent pas d’une persistance chiffrée et que le backend ne possède pas d’ordonnanceur durable.
 
 ## 4. Architecture conceptuelle
 
@@ -429,6 +438,8 @@ L'IA recommande ; elle ne déclenche pas seule une action destructive.
 - produire un rapport complet des décisions et actions ;
 - notifier les cas ambigus et permettre l'interruption immédiate ;
 - garantir audit, idempotence, reprise sur erreur et récupération.
+
+L’état actuel couvre les lots contrôlés déclenchés par l’utilisateur, l’audit local, l’arrêt, l’idempotence et la reprise manuelle. L’ordonnancement quotidien hors session reste l’évolution suivante, conditionnée par une architecture de secrets et de persistance adaptée.
 
 ## 13. Principes de conception durables
 

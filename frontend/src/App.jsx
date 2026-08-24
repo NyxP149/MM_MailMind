@@ -3,6 +3,7 @@ import {
   Archive,
   BarChart3,
   Bell,
+  Bot,
   ChevronDown,
   ChevronRight,
   Inbox,
@@ -33,6 +34,7 @@ import { Dashboard } from './components/Dashboard.jsx';
 import { RulesManager } from './components/RulesManager.jsx';
 import { AIAssistant } from './components/AIAssistant.jsx';
 import { LearningDashboard } from './components/LearningDashboard.jsx';
+import { AgentControl } from './components/AgentControl.jsx';
 import { applyClassificationOverrides, applyCustomRules, applyLearnedPreferences, createLearningExample, mergeEmails, readLocalMap, upsertLearningExample } from './classification.js';
 import { resolveTheme, THEME_KEY } from './theme.js';
 
@@ -41,6 +43,7 @@ const DECISIONS_KEY = 'mailmind:quarantine-decisions:v1';
 const ACTION_HISTORY_KEY = 'mailmind:action-history:v1';
 const RULES_KEY = 'mailmind:custom-rules:v1';
 const LEARNING_KEY = 'mailmind:learning-examples:v1';
+const AGENT_REPORTS_KEY = 'mailmind:agent-reports:v1';
 function initialTheme() {
   return resolveTheme(
     localStorage.getItem(THEME_KEY),
@@ -138,6 +141,10 @@ export default function App() {
     const stored = readLocalMap(LEARNING_KEY);
     return Array.isArray(stored) ? stored : [];
   });
+  const [agentReports, setAgentReports] = useState(() => {
+    const stored = readLocalMap(AGENT_REPORTS_KEY);
+    return Array.isArray(stored) ? stored : [];
+  });
   const [theme, setTheme] = useState(initialTheme);
 
   useEffect(() => {
@@ -219,6 +226,7 @@ export default function App() {
     rules: { eyebrow: 'Personnalisation V4', title: 'Règles personnalisées', description: 'Adaptez les suggestions MailMind à vos propres préférences.', panel: 'Règles' },
     assistant: { eyebrow: 'Assistant V5', title: 'Intelligence artificielle', description: 'Demandez une analyse approfondie, message par message.', panel: 'Assistant' },
     learning: { eyebrow: 'Apprentissage V6', title: 'Préférences apprises', description: 'Comprenez comment vos corrections améliorent MailMind.', panel: 'Apprentissage' },
+    agent: { eyebrow: 'Agent contrôlé V7', title: 'Automatisation maîtrisée', description: 'Simulez, autorisez et interrompez des lots d’actions réversibles.', panel: 'Agent autonome' },
   }[activeView];
 
   const changeView = (view) => {
@@ -359,6 +367,32 @@ export default function App() {
     }
   };
 
+  const saveAgentReport = (report) => {
+    setAgentReports((current) => {
+      const next = [report, ...current.filter((item) => item.id !== report.id)].slice(0, 30);
+      localStorage.setItem(AGENT_REPORTS_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const applyAgentQuarantine = async (item, runId) => {
+    const result = await api.quarantineEmail(item.messageId);
+    setEmails((current) => current.map((email) => email.id === item.messageId ? { ...email, quarantined: result.quarantined } : email));
+    setActionHistory((current) => {
+      const next = [{
+        action: 'quarantine',
+        source: 'agent-v7',
+        runId,
+        at: new Date().toISOString(),
+        category: item.categoryId,
+        categoryLabel: item.categoryLabel,
+      }, ...current].slice(0, 100);
+      localStorage.setItem(ACTION_HISTORY_KEY, JSON.stringify(next));
+      return next;
+    });
+    return result;
+  };
+
   if (!status && loading) return <div className="app-loader"><Brand /><span /></div>;
   if (!status?.connected) {
     return <div className="welcome-page"><header className="welcome-header"><Brand /><ThemeToggle theme={theme} onToggle={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')} /></header>{error && <div className="toast error-toast">{error}</div>}<Welcome configured={status?.configured} missing={status?.missing} /></div>;
@@ -381,6 +415,7 @@ export default function App() {
           <button className={activeView === 'rules' ? 'nav-item active' : 'nav-item'} onClick={() => changeView('rules')}><ListChecks size={19} /> Règles <span className="v4-badge">V4</span></button>
           <button className={activeView === 'assistant' ? 'nav-item active' : 'nav-item'} onClick={() => changeView('assistant')}><Sparkles size={19} /> Assistant <span className="v5-badge">V5</span></button>
           <button className={activeView === 'learning' ? 'nav-item active' : 'nav-item'} onClick={() => changeView('learning')}><GraduationCap size={19} /> Apprentissage <span className="v6-badge">V6</span></button>
+          <button className={activeView === 'agent' ? 'nav-item active' : 'nav-item'} onClick={() => changeView('agent')}><Bot size={19} /> Agent contrôlé <span className="v7-badge">V7</span></button>
         </nav>
         <div className="sidebar-footer">
           <div className="privacy-card"><ShieldCheck size={20} /><div><strong>Vos données restent privées</strong><span>Labels réversibles via Google</span></div></div>
@@ -417,11 +452,13 @@ export default function App() {
           </div>
           {error && <div className="inline-error" role="alert">{error}<button onClick={() => loadEmails()}>Réessayer</button></div>}
           {scanNotice && <div className="scan-notice" role="status"><ScanSearch size={16} /> {scanNotice}</div>}
-          {activeView !== 'inbox' && activeView !== 'quality' && activeView !== 'dashboard' && activeView !== 'rules' && activeView !== 'assistant' && activeView !== 'learning' && !loading && (
+          {activeView !== 'inbox' && activeView !== 'quality' && activeView !== 'dashboard' && activeView !== 'rules' && activeView !== 'assistant' && activeView !== 'learning' && activeView !== 'agent' && !loading && (
             <ClassificationOverview emails={effectiveEmails} selectedCategory={selectedCategory} onSelectCategory={setSelectedCategory} decisions={decisions} />
           )}
           {activeView === 'learning' && !loading ? (
             <LearningDashboard examples={learningExamples} onReset={resetLearning} />
+          ) : activeView === 'agent' && !loading ? (
+            <AgentControl emails={effectiveEmails} decisions={decisions} reports={agentReports} onSaveReport={saveAgentReport} onQuarantine={applyAgentQuarantine} />
           ) : activeView === 'assistant' && !loading ? (
             <AIAssistant emails={effectiveEmails} configured={status.ai?.configured} model={status.ai?.model} provider={status.ai?.provider} />
           ) : activeView === 'rules' && !loading ? (
@@ -437,7 +474,7 @@ export default function App() {
               {nextPageToken && !query && <div className="load-more"><button onClick={() => loadEmails(nextPageToken)} disabled={loadingMore}>{loadingMore ? 'Chargement…' : 'Afficher plus de messages'}</button></div>}
             </section>
           )}
-          <p className="v1-note"><ShieldCheck size={15} /> {activeView === 'assistant' ? 'Version 5 — L’IA conseille uniquement après votre consentement. Aucune action Gmail.' : activeView === 'learning' ? 'Version 6 — L’apprentissage reste local, explicable et réversible. Aucune action Gmail.' : 'Version 2 — Gmail ne change qu’après votre confirmation explicite. Aucune suppression.'}</p>
+          <p className="v1-note"><ShieldCheck size={15} /> {activeView === 'assistant' ? 'Version 5 — L’IA conseille uniquement après votre consentement. Aucune action Gmail.' : activeView === 'learning' ? 'Version 6 — L’apprentissage reste local, explicable et réversible. Aucune action Gmail.' : activeView === 'agent' ? 'Version 7 — Seuls les labels explicitement autorisés sont appliqués. Aucune suppression.' : 'Version 2 — Gmail ne change qu’après votre confirmation explicite. Aucune suppression.'}</p>
         </main>
       </div>
       {sidebarOpen && <button className="sidebar-scrim" onClick={() => setSidebarOpen(false)} aria-label="Fermer le menu" />}

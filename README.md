@@ -190,4 +190,12 @@ Les appels Gmail passent exclusivement par le backend. Le frontend ne reçoit ja
 
 ## Roadmap
 
-Les versions V1 à V6 sont disponibles : Gmail, classification prudente, dashboard, règles personnalisées, assistant IA à la demande et apprentissage local à partir des corrections. La prochaine étape est la V7, consacrée à l’agent autonome contrôlé et à ses rapports. Toute action destructive reste désactivée.
+Les versions V1 à V7 sont disponibles : Gmail, classification prudente, dashboard, règles personnalisées, assistant IA locale à la demande, apprentissage à partir des corrections et agent autonome contrôlé. La V7 permet de simuler puis d’autoriser un lot de labels de quarantaine réversibles selon un seuil et des catégories explicites. Elle produit des rapports exportables sans contenu d’e-mail. Toute action destructive reste désactivée.
+
+## Agent contrôlé V7
+
+La vue **Agent contrôlé** construit un plan sur les messages déjà chargés. Par défaut, elle fonctionne en simulation. Pour autoriser Gmail, l’utilisateur doit activer le mode contrôlé, armer explicitement le lot et confirmer une seconde fois le nombre d’actions proposé.
+
+L’agent peut uniquement ajouter `MailMind/Quarantine`. Il ignore les messages déjà labellisés, laisse tous les cas ambigus inchangés et peut être interrompu entre deux actions. Les rapports locaux sont limités aux 30 plus récents et contiennent des compteurs, catégories, résultats et empreintes non réversibles — jamais de sujet, d’expéditeur, d’extrait ou d’identifiant Gmail.
+
+La planification quotidienne lorsque l’application est fermée reste volontairement désactivée : elle nécessitera auparavant une persistance chiffrée des jetons OAuth, un ordonnanceur backend et une politique de reprise durable.

@@ -92,6 +92,14 @@ npm run dev
 
 Avec Ollama, le modèle reste chargé quelques minutes après une analyse. Sur une machine sans accélération GPU, une requête locale peut prendre plusieurs dizaines de secondes ; l'interface la poursuit en arrière-plan et récupère son résultat au retour sur la vue Assistant.
 
+## Exploitation de l’agent V7
+
+L’agent V7 s’exécute uniquement lorsque MailMind et le backend sont actifs. Il traite séquentiellement le lot déjà chargé dans le navigateur et utilise la route réversible de quarantaine. Une fermeture ou un rechargement pendant un lot réel arrête l’orchestration frontend ; au prochain lancement, le plan est recalculé et les messages déjà labellisés sont ignorés.
+
+Les 30 derniers rapports sont stockés dans le `localStorage` du navigateur sous `mailmind:agent-reports:v1`. Ils ne contiennent pas de contenu d’e-mail, mais doivent tout de même être considérés comme des données locales d’audit. Effacer les données du site supprime ces rapports. L’export JSON est volontairement minimisé.
+
+Ne pas transformer cette version en tâche quotidienne serveur sans ajouter auparavant : stockage chiffré des jetons OAuth, séparation des utilisateurs, ordonnanceur durable, verrou distribué ou transactionnel, rétention d’audit définie et mécanisme explicite de révocation.
+
 Dans Google Cloud, l'URI de redirection autorisée doit correspondre **exactement** à `http://localhost:3000/api/auth/google/callback`. Ajouter le compte Gmail dans les utilisateurs tests si l'écran de consentement est encore en mode test.
 
 ## Variables d'environnement et secrets
