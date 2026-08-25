@@ -8,6 +8,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['mailmind-mark.svg'],
+      workbox: {
+        navigateFallbackDenylist: [/^\/api(?:\/|$)/],
+      },
       manifest: {
         name: 'MailMind',
         short_name: 'MailMind',
@@ -35,4 +38,3 @@ export default defineConfig({
     setupFiles: './src/test/setup.js',
   },
 });
-
