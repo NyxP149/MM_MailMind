@@ -1,6 +1,6 @@
 # MailMind
 
-MailMind est une application web personnelle qui connecte Gmail à une interface claire et responsive. La V2 peut appliquer ou retirer un label de quarantaine après confirmation explicite ; elle ne possède aucune fonction de suppression ou de mise à la corbeille.
+MailMind est une application web personnelle qui connecte Gmail à une interface claire et responsive. La V9 ajoute un sas de nettoyage Gmail entièrement manuel : isolation réversible, restauration, signalement comme spam ou déplacement vers la corbeille, sans suppression définitive.
 
 ## Fonctionnalités disponibles
 
@@ -24,8 +24,18 @@ MailMind est une application web personnelle qui connecte Gmail à une interface
 - scanner progressif permettant d’analyser 50, 100 ou 250 messages par session.
 - tableau **Qualité** : précision observée, couverture, confirmations, faux positifs et corrections ;
 - export JSON anonymisé des métriques et décisions, sans contenu d’e-mail.
-- label Gmail réversible `MailMind/Quarantine`, appliqué message par message après une seconde confirmation ;
+- label Gmail réversible `MailMind/À supprimer`, appliqué message par message après une seconde confirmation ;
 - restauration par retrait du label, sans déplacer le message ni altérer son état d’origine.
+
+### V9 — Sas de nettoyage contrôlé
+
+- dossier Gmail visible sous le label `MailMind/À supprimer` ;
+- migration automatique de l’ancien label `MailMind/Quarantine`, sans perdre les messages déjà classés ;
+- isolation manuelle qui archive le message hors de la boîte de réception tout en le laissant consultable dans Gmail ;
+- restauration vers la boîte de réception, signalement comme spam ou déplacement vers la corbeille, chaque action exigeant une confirmation explicite ;
+- alerte dans MailMind à partir de 300 messages isolés ;
+- vidage du sas vers la corbeille seulement après saisie de `CORBEILLE N`, avec vérification serveur du nombre exact ;
+- aucune suppression définitive et aucune action automatique vers Spam ou Corbeille.
 
 ### V3 — Tableau de bord local
 
@@ -181,22 +191,23 @@ backend/   Express + Google OAuth2 + Gmail API
 
 Les appels Gmail passent exclusivement par le backend. Le frontend ne reçoit jamais les jetons Google. En développement sans persistance V8, une relance du backend demande simplement de reconnecter Gmail.
 
-## Sécurité et limites de la V1
+## Sécurité et limites actuelles
 
 - Le scope demandé est `gmail.modify`, classé restreint par Google. En mode test personnel, seul un utilisateur test explicitement autorisé peut consentir.
-- Les seules mutations implémentées ajoutent ou retirent `MailMind/Quarantine`. Aucune route de suppression, corbeille, envoi ou modification de contenu n’existe.
+- L’agent V7 peut uniquement ajouter `MailMind/À supprimer`, sans archiver. Les actions V9 vers Spam ou Corbeille sont exclusivement manuelles et refusées si le message ne porte pas ce label.
+- MailMind n’expose aucune suppression définitive, aucun envoi d’e-mail et aucune modification du contenu. Les messages placés dans la corbeille restent récupérables selon les règles de Gmail.
 - Sans les variables V8, les jetons vivent uniquement en mémoire et disparaissent au redémarrage. Le kit privé les chiffre sur un volume persistant.
 - L’application reste mono-utilisateur. Cloudflare Access est requis pour le déploiement privé ; une ouverture publique exige encore des sessions et données isolées par utilisateur.
 
 ## Roadmap
 
-Les versions V1 à V8 sont disponibles : Gmail, classification prudente, dashboard, règles personnalisées, assistant IA locale à la demande, apprentissage, agent autonome contrôlé et déploiement privé chiffré. Toute action destructive reste désactivée.
+Les versions V1 à V9 sont disponibles : Gmail, classification prudente, dashboard, règles personnalisées, assistant IA locale à la demande, apprentissage, agent autonome contrôlé, déploiement privé chiffré et sas de nettoyage manuel. La suppression définitive reste désactivée.
 
 ## Agent contrôlé V7
 
 La vue **Agent contrôlé** construit un plan sur les messages déjà chargés. Par défaut, elle fonctionne en simulation. Pour autoriser Gmail, l’utilisateur doit activer le mode contrôlé, armer explicitement le lot et confirmer une seconde fois le nombre d’actions proposé.
 
-L’agent peut uniquement ajouter `MailMind/Quarantine`. Il ignore les messages déjà labellisés, laisse tous les cas ambigus inchangés et peut être interrompu entre deux actions. Les rapports locaux sont limités aux 30 plus récents et contiennent des compteurs, catégories, résultats et empreintes non réversibles — jamais de sujet, d’expéditeur, d’extrait ou d’identifiant Gmail.
+L’agent peut uniquement ajouter `MailMind/À supprimer`. Il n’archive pas le message et n’appelle jamais Spam ou Corbeille. Il ignore les messages déjà labellisés, laisse tous les cas ambigus inchangés et peut être interrompu entre deux actions. Les rapports locaux sont limités aux 30 plus récents et contiennent des compteurs, catégories, résultats et empreintes non réversibles — jamais de sujet, d’expéditeur, d’extrait ou d’identifiant Gmail.
 
 ### Planification V7.1
 

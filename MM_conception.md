@@ -11,6 +11,8 @@
 
 > Mise à jour V6 : apprentissage local, explicable et réinitialisable à partir des corrections.
 
+> Mise à jour V9 : sas Gmail visible, actions de nettoyage exclusivement manuelles et absence de suppression définitive.
+
 ## 1. Objet du document
 
 Ce document décrit la conception fonctionnelle et technique de MailMind. Il distingue l'état réellement implémenté dans la V1 des orientations prévues par la feuille de route.
@@ -25,7 +27,7 @@ La V2 introduit une analyse déterministe des métadonnées déjà récupérées
 
 Les catégories actuelles sont : Adultes, Rencontres, Spam, Arnaque, Newsletter, Publicité, Facture, Travail, Important et Autre. Les recommandations possibles sont `keep`, `review` et `quarantine`.
 
-La quarantaine commence comme une vue virtuelle. Après confirmation humaine puis confirmation d’action, MailMind peut ajouter le label `MailMind/Quarantine` dans Gmail. Le message n’est ni déplacé, ni archivé, ni mis à la corbeille. La restauration retire uniquement ce label, ce qui préserve exactement l’état Gmail d’origine. Le scope OAuth est `gmail.modify` ; aucune capacité de suppression n’est exposée par l’application.
+La quarantaine commence comme une vue virtuelle. Après confirmation humaine puis confirmation d’action, MailMind peut ajouter le label désormais nommé `MailMind/À supprimer` dans Gmail. Le chemin historique V2 ne déplace, n’archive ni ne met le message à la corbeille. La restauration retire le label. Le scope OAuth est `gmail.modify` ; la V9 réutilise ensuite cette permission pour ses actions manuelles bornées au sas.
 
 ### Boucle de validation humaine
 
@@ -113,7 +115,7 @@ La vue Apprentissage rend visibles les signaux actifs, leur confiance et les obs
 
 La V7 introduit une autonomie bornée sur les messages déjà chargés. Une politique locale définit le seuil de confiance et les catégories autorisées. Le plan sépare explicitement les actions éligibles, les cas ambigus, les messages protégés et les actions déjà réalisées. Une décision humaine « faux positif / sûr » est toujours prioritaire et exclut définitivement le message du lot courant. Le mode par défaut est une simulation sans effet Gmail.
 
-Une exécution réelle nécessite l’activation du mode contrôlé, l’armement explicite du lot et une confirmation récapitulant le nombre d’actions. La seule capacité accordée est l’ajout du label réversible `MailMind/Quarantine`. L’arrêt empêche toute nouvelle action après celle éventuellement déjà engagée. L’idempotence repose sur l’état `quarantined` : un message déjà labellisé est ignoré lors d’une reprise.
+Une exécution réelle nécessite l’activation du mode contrôlé, l’armement explicite du lot et une confirmation récapitulant le nombre d’actions. La seule capacité accordée à l’agent est l’ajout du label réversible `MailMind/À supprimer`. L’arrêt empêche toute nouvelle action après celle éventuellement déjà engagée. L’idempotence repose sur l’état `quarantined` : un message déjà labellisé est ignoré lors d’une reprise.
 
 Chaque lot produit un rapport local limité aux métriques, catégories, politique, état, erreurs et empreintes non réversibles. Aucun contenu, expéditeur ou identifiant Gmail n’est enregistré dans le rapport.
 
@@ -124,6 +126,16 @@ La V7.2 ajoute une vue d’audit unifiée sans créer une nouvelle source de don
 ## Déploiement privé V8
 
 La V8 cible un seul utilisateur. Elle ne transforme pas l’état OAuth global en modèle multi-utilisateur. Le point d’entrée unique est un proxy Nginx lié uniquement à l’interface locale de l’hôte. Il sert les ressources PWA et transmet `/api` au backend sur le réseau Docker interne. Ce point d’entrée peut rester strictement local, sans domaine, ou être publié : Cloudflare Tunnel fournit alors le transport HTTPS sortant et Cloudflare Access limite les visiteurs autorisés.
+
+## Sas de nettoyage V9
+
+La V9 remplace le nom historique `MailMind/Quarantine` par le label utilisateur visible `MailMind/À supprimer`. Si l’ancien label existe, il est renommé par l’API Gmail afin de conserver son contenu. Ce label constitue un espace d’isolement consultable directement dans Gmail et non une copie locale des messages.
+
+Deux niveaux d’action restent volontairement séparés. L’agent contrôlé V7 peut seulement ajouter le label, sans retirer `INBOX`. Dans la vue **Sas de nettoyage**, l’utilisateur peut isoler manuellement un message en ajoutant le label et en le retirant de la boîte de réception, puis choisir individuellement de le restaurer, de le signaler comme spam ou de le déplacer vers la corbeille.
+
+Chaque mutation V9 exige une confirmation dans l’interface et un en-tête de consentement exact vérifié par le backend. Spam et Corbeille refusent tout message qui ne possède pas le label d’isolement. Le vidage groupé exige la saisie `CORBEILLE N` et le backend vérifie que `N` correspond encore au nombre réel de messages avant d’agir. Le lot est limité à 500 messages et son exécution est bornée en concurrence.
+
+Le seuil de 300 produit une alerte visuelle ; il ne lance aucune action. MailMind ne propose aucune suppression définitive : la corbeille Gmail demeure la dernière étape récupérable. Les rapports et journaux ne stockent que le type d’action et des compteurs, jamais le contenu des messages.
 
 La reprise après redémarrage repose sur deux enveloppes AES-256-GCM : les identifiants OAuth d’un côté et l’état de l’ordonnanceur de l’autre. Une clé de déploiement d’au moins 32 caractères est dérivée en clé de chiffrement de 256 bits ; chaque écriture utilise un IV aléatoire et un tag d’authentification. Les fichiers sont écrits sur un volume Docker avec remplacement atomique et ne contiennent jamais de clair. La déconnexion révoque les identifiants puis efface les deux enveloppes.
 
@@ -383,11 +395,11 @@ Ce modèle est volontairement indépendant du schéma complet de Gmail. Les futu
 - prévoir des tests de sécurité et une procédure de réponse aux incidents ;
 - revalider les scopes Google à chaque fonctionnalité ajoutée.
 
-Toute évolution vers l'écriture doit demander un scope distinct et être précédée d'une revue de sécurité. La suppression définitive ne doit jamais être le premier mécanisme livré : label ou quarantaine, aperçu, confirmation, journal d'action et possibilité de récupération sont requis.
+Toute évolution des écritures Gmail doit rester couverte par le scope minimal nécessaire et être précédée d'une revue de sécurité. La suppression définitive ne doit jamais être le premier mécanisme livré : label ou quarantaine, aperçu, confirmation, journal d'action et possibilité de récupération sont requis.
 
 ## 11. Expérience utilisateur, responsive et PWA
 
-L'interface vise une expérience calme, claire et rassurante. Elle rappelle qu’aucune suppression n’existe et qu’une confirmation explicite précède chaque changement Gmail. Les erreurs de configuration, d'authentification ou de Gmail sont reformulées en français et affichées dans le contexte approprié.
+L'interface vise une expérience calme, claire et rassurante. Elle rappelle qu’aucune suppression définitive n’existe et qu’une confirmation explicite précède chaque changement Gmail. Les erreurs de configuration, d'authentification ou de Gmail sont reformulées en français et affichées dans le contexte approprié.
 
 La mise en page comporte trois paliers principaux :
 

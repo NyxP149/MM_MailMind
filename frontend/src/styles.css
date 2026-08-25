@@ -553,6 +553,55 @@ a { color: inherit; text-decoration: none; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 .mobile-only, .sidebar-scrim { display: none; }
 
+.isolation-vault { display: flex; flex-direction: column; gap: 14px; }
+.isolation-hero { min-height: 132px; padding: 24px 27px; border-radius: 18px; background: linear-gradient(115deg, #11231e, #1b352d); color: white; display: flex; align-items: center; justify-content: space-between; overflow: hidden; position: relative; }
+.isolation-hero::after { content: ''; width: 210px; height: 210px; border: 34px solid #dfff5f1a; border-radius: 50%; position: absolute; right: 90px; top: -74px; }
+.isolation-hero > div { position: relative; z-index: 1; }
+.isolation-hero h2 { margin: 8px 0 5px; font: 800 24px Manrope, sans-serif; }
+.isolation-hero p { margin: 0; color: #b9c8c2; font-size: 11px; }
+.isolation-count { width: 96px; height: 76px; border: 1px solid #ffffff20; border-radius: 15px; background: #ffffff0a; display: grid; place-content: center; text-align: center; }
+.isolation-count strong { color: var(--lime); font: 800 25px Manrope, sans-serif; }
+.isolation-count span { color: #9dafaa; font-size: 8px; }
+.isolation-alert { padding: 13px 16px; border: 1px solid #e5c878; border-radius: 12px; background: #fff8de; color: #855f12; display: flex; align-items: center; gap: 11px; }
+.isolation-alert > div { display: flex; flex-direction: column; gap: 2px; }
+.isolation-alert strong { font-size: 11px; }
+.isolation-alert span { font-size: 9px; }
+.isolation-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.isolation-toolbar > a, .isolation-toolbar button { min-height: 38px; border: 1px solid #dfe2dc; border-radius: 10px; background: white; color: #59635f; padding: 0 12px; display: inline-flex; align-items: center; gap: 7px; font-size: 10px; font-weight: 700; text-decoration: none; cursor: pointer; }
+.isolation-toolbar > div { display: flex; gap: 8px; }
+.isolation-toolbar .isolation-trash-all { border-color: #edc4c0; background: #fff4f2; color: #9e3e36; }
+.isolation-toolbar button:disabled { opacity: .5; cursor: default; }
+.isolation-panel { background: white; border: 1px solid #e1e4dd; border-radius: 17px; overflow: hidden; }
+.isolation-row { min-height: 84px; padding: 13px 18px; display: grid; grid-template-columns: 39px minmax(120px, .7fr) minmax(220px, 1.7fr) 60px minmax(245px, auto); gap: 13px; align-items: center; border-bottom: 1px solid #eff0ec; }
+.isolation-row:last-child { border-bottom: 0; }
+.isolation-row time { color: #959c99; font-size: 9px; text-align: right; }
+.isolation-actions { display: flex; justify-content: flex-end; gap: 5px; }
+.isolation-actions button { min-height: 31px; border: 1px solid #dfe2dc; border-radius: 8px; background: white; padding: 0 8px; display: inline-flex; align-items: center; gap: 5px; font-size: 8px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.isolation-actions button:disabled { opacity: .5; cursor: default; }
+.isolation-actions .isolation-restore { color: #397151; border-color: #c7dfcf; background: #f1faf4; }
+.isolation-actions .isolation-spam { color: #9b6a20; border-color: #ecd9ae; background: #fff9e9; }
+.isolation-actions .isolation-trash { color: #9e3e36; border-color: #edc4c0; background: #fff4f2; }
+.isolation-empty, .isolation-loading { min-height: 280px; display: grid; place-content: center; justify-items: center; gap: 8px; color: #8d9692; font-size: 11px; text-align: center; }
+.isolation-empty strong { color: #46514d; font: 700 14px Manrope, sans-serif; }
+.isolation-safety { padding: 11px 14px; border: 1px solid #dfe7bd; border-radius: 11px; background: #f2f6df; color: #697934; display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 9px; }
+
+@media (max-width: 1100px) {
+  .isolation-row { grid-template-columns: 39px minmax(110px, .7fr) minmax(180px, 1.5fr) minmax(230px, auto); }
+  .isolation-row time { display: none; }
+}
+
+@media (max-width: 760px) {
+  .isolation-hero { padding: 20px; }
+  .isolation-hero::after { display: none; }
+  .isolation-toolbar { align-items: stretch; flex-direction: column; }
+  .isolation-toolbar > div { display: grid; grid-template-columns: 1fr 1.5fr; }
+  .isolation-toolbar > a, .isolation-toolbar button { justify-content: center; }
+  .isolation-row { grid-template-columns: 38px 1fr; padding: 14px; }
+  .isolation-row .email-content, .isolation-actions { grid-column: 1 / -1; }
+  .isolation-actions { justify-content: stretch; }
+  .isolation-actions button { flex: 1; justify-content: center; }
+}
+
 @media (max-width: 1000px) {
   .welcome-shell { gap: 30px; }
   .preview-card { width: 440px; height: 320px; }
@@ -880,6 +929,23 @@ html[data-theme='dark'] .agent-schedule-buttons .agent-schedule-save { backgroun
 html[data-theme='dark'] .agent-schedule-buttons .danger { background: #2b1d1b; border-color: #55302b; color: #d99a91; }
 html[data-theme='dark'] .agent-warning { background: #292415; border-color: #54451f; color: #c6a65b; }
 html[data-theme='dark'] .agent-safety { background: #202916; border-color: #34431f; color: #9bad63; }
+html[data-theme='dark'] .isolation-panel { background: #151d1b; border-color: #2b3532; }
+html[data-theme='dark'] .isolation-row { border-color: #293330; }
+html[data-theme='dark'] .isolation-row .email-sender strong,
+html[data-theme='dark'] .isolation-row .email-content strong,
+html[data-theme='dark'] .isolation-empty strong { color: #e4ebe7; }
+html[data-theme='dark'] .isolation-row time,
+html[data-theme='dark'] .isolation-row .email-sender span,
+html[data-theme='dark'] .isolation-row .email-content p { color: #7f8b87; }
+html[data-theme='dark'] .isolation-toolbar > a,
+html[data-theme='dark'] .isolation-toolbar button,
+html[data-theme='dark'] .isolation-actions button { background: #1d2523; border-color: #303a37; color: #b9c3bf; }
+html[data-theme='dark'] .isolation-toolbar .isolation-trash-all,
+html[data-theme='dark'] .isolation-actions .isolation-trash { background: #2b1d1b; border-color: #55302b; color: #d99a91; }
+html[data-theme='dark'] .isolation-actions .isolation-restore { background: #172a20; border-color: #31523e; color: #83bd98; }
+html[data-theme='dark'] .isolation-actions .isolation-spam { background: #2a2416; border-color: #6e5726; color: #d6bb75; }
+html[data-theme='dark'] .isolation-alert { background: #292415; border-color: #54451f; color: #c6a65b; }
+html[data-theme='dark'] .isolation-safety { background: #202916; border-color: #34431f; color: #9bad63; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }

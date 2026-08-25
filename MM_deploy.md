@@ -12,6 +12,8 @@
 
 > Mise à jour V8 : déploiement Docker privé, accès par tunnel et persistance chiffrée.
 
+> Mise à jour V9 : sas Gmail manuel `MailMind/À supprimer`, sans nouveau service ni nouveau scope OAuth.
+
 ## Statut actuel et périmètre
 
 > **La V8 peut être publiée derrière Cloudflare Tunnel et Cloudflare Access pour un usage personnel privé. Elle ne doit pas être ouverte librement à plusieurs utilisateurs.**
@@ -126,7 +128,13 @@ La reconstruction conserve le volume `mailmind-data`. Après chaque mise à jour
 - utiliser **Déconnecter Gmail** avant d’abandonner une installation afin de révoquer et effacer les jetons ;
 - si la clé est perdue, supprimer explicitement le volume, générer une nouvelle configuration et reconnecter Google.
 
-Le classificateur V2 s’exécute sans service d’IA externe. Les recommandations seules ne modifient pas Gmail. Après double validation, le backend ajoute ou retire exclusivement `MailMind/Quarantine`. Le changement de scope impose une nouvelle autorisation Google. Un journal d’audit en mémoire conserve les 100 dernières actions sans contenu d’e-mail.
+Le classificateur V2 s’exécute sans service d’IA externe. Les recommandations seules ne modifient pas Gmail. Le label actuel est `MailMind/À supprimer` ; l’ancien `MailMind/Quarantine` est migré automatiquement. La V9 utilise le scope `gmail.modify` déjà accordé et ne demande donc pas de nouvelle autorisation. Les actions Spam et Corbeille restent manuelles, bornées au sas et protégées par confirmation. Un journal d’audit en mémoire conserve les 100 dernières actions sans contenu d’e-mail.
+
+### Exploitation du sas V9
+
+Après la mise à jour, ouvrez **Sas de nettoyage** une première fois : le backend crée le label Gmail ou renomme l’ancien. Dans Gmail, le label apparaît dans la colonne de gauche sous `MailMind/À supprimer` et peut être consulté ou vidé manuellement.
+
+Le seuil de 300 est informatif et ne nécessite aucun ordonnanceur supplémentaire. Le bouton de vidage déplace les messages vers la corbeille Gmail après saisie de la phrase exacte ; il ne les supprime pas définitivement. Pour un contrôle après déploiement, vérifiez le compteur, ouvrez le lien Gmail et testez d’abord isolation puis restauration sur un message sans importance. Ne testez Spam ou Corbeille qu’avec un message que vous acceptez de déplacer.
 
 Les validations V2 sont actuellement conservées dans `localStorage`. Elles survivent aux rechargements et redémarrages locaux, mais pas à l’effacement des données du site, au changement de navigateur ou d’origine. Un déploiement multi-appareil devra les déplacer vers un stockage serveur authentifié, isolé par utilisateur, avec chiffrement et politique de rétention.
 

@@ -10,7 +10,7 @@
 
 > Mise à jour V6 : moteur de préférences locales dérivé des corrections explicites.
 
-Ce document décrit l’implémentation actuellement présente dans le dépôt. Il sert de référence aux personnes qui développent, testent ou maintiennent MailMind. La version actuelle reste personnelle et mono-utilisateur ; elle peut fonctionner localement ou derrière le déploiement privé V8.
+Ce document décrit l’implémentation actuellement présente dans le dépôt. Il sert de référence aux personnes qui développent, testent ou maintiennent MailMind. La version actuelle reste personnelle et mono-utilisateur ; elle peut fonctionner localement ou derrière le déploiement privé V8 et inclut le sas de nettoyage V9.
 
 ## 1. Vue d’ensemble technique
 
@@ -55,7 +55,7 @@ L’export est créé dans le navigateur avec `Blob` et `URL.createObjectURL`. C
 
 ### Quarantaine Gmail réversible
 
-`backend/src/gmail-actions.js` gère le label `MailMind/Quarantine`. Il recherche d’abord un label existant, le crée si nécessaire, puis utilise `users.messages.modify` uniquement avec `addLabelIds` ou `removeLabelIds`.
+`backend/src/gmail-actions.js` gère le label `MailMind/À supprimer`. Il recherche d’abord ce label, migre l’ancien `MailMind/Quarantine` si nécessaire, ou le crée. L’action V7 conserve uniquement l’ajout réversible du label. Les fonctions V9 isolent ou restaurent un message avec `users.messages.modify`, signalent un message isolé avec le label système `SPAM`, ou utilisent `users.messages.trash` pour le déplacer dans la corbeille. Aucune fonction `delete` définitive n’est implémentée.
 
 - `POST /api/emails/:id/quarantine` exige l’en-tête `X-MailMind-Confirm: quarantine` ;
 - `POST /api/emails/:id/restore` exige `X-MailMind-Confirm: restore` ;
@@ -120,6 +120,16 @@ La configuration Workbox exclut explicitement `/api` de la navigation de secours
 `initialize-deployment.ps1` accepte une origine HTTPS ou l’exception OAuth locale `http://localhost[:port]`. Son option `-ReuseBackendEnv` importe uniquement une liste blanche de paramètres Google et IA depuis `backend/.env`, puis génère de nouveaux secrets de cookie et de chiffrement. `mailmind.ps1` retrouve également les installations Docker Desktop par utilisateur lorsque `docker.exe` n’est pas encore dans le `PATH`. En production sur localhost, le cookie OAuth n’emploie pas l’attribut `Secure`; toute origine HTTPS de production le conserve.
 
 En production, un middleware refuse également toute méthode mutative dont l’en-tête `Origin` ne correspond pas exactement à `FRONTEND_URL`. Cette défense complète CORS pour les routes de déconnexion, IA, planification et labels Gmail ; les lectures et le développement local restent inchangés.
+
+## Implémentation du sas V9
+
+`GET /api/isolation` assure l’existence du label, liste uniquement ses messages hors Spam et Corbeille, puis renvoie une page de métadonnées minimales avec le total estimé et le seuil d’alerte 300. La pagination réutilise les limites Gmail existantes.
+
+Les routes manuelles sont `POST /api/emails/:id/isolate`, `POST /api/isolation/:id/spam`, `POST /api/isolation/:id/trash` et `POST /api/isolation/trash-all`. Elles exigent respectivement les confirmations HTTP `isolate`, `spam`, `trash` et `trash-all`. La restauration réutilise la route existante et remet explicitement le message dans `INBOX`.
+
+Avant Spam ou Corbeille, le backend relit le message et vérifie la présence du label d’isolement. Le vidage groupé parcourt au maximum 500 identifiants, compare le total réel au `expectedCount` fourni, exige dans le corps `CORBEILLE N`, puis traite cinq messages au maximum en parallèle. Un changement de contenu entre l’aperçu et la confirmation annule donc le lot.
+
+`IsolationVault.jsx` expose le compteur, l’alerte, la pagination, un lien direct vers la recherche Gmail du label et les quatre actions manuelles. Les sujets et expéditeurs restent seulement en mémoire d’interface ; l’historique local conserve des actions et catégories sans identifiant Gmail. Le composant n’offre aucun bouton de suppression définitive.
 
 
 ```text
@@ -394,6 +404,6 @@ Il n’existe actuellement ni ESLint ni Prettier configuré. Ne lancez donc pas 
 - La recherche est locale et limitée aux pages déjà récupérées.
 - Chaque page peut provoquer jusqu’à 51 appels Gmail (une liste puis jusqu’à 50 détails), sans contrôle de concurrence ni reprise partielle.
 - L’API est conçue pour le développement local ; une mise en production exige notamment HTTPS, stockage chiffré des jetons, sessions par utilisateur, rotation des secrets, politique d’accès, supervision et stratégie de déploiement.
-- La V2 possède uniquement deux routes de mutation : ajout et retrait du label `MailMind/Quarantine`. Elle ne possède aucune route de suppression, corbeille, archivage ou envoi.
+- Les mutations V9 restent mono-utilisateur. Spam et Corbeille sont limitées aux messages portant `MailMind/À supprimer`, et aucune route de suppression définitive ou d’envoi n’existe.
 
 Ces limites doivent être traitées comme des contraintes d’architecture, pas comme des fonctionnalités implicites. Toute évolution vers plusieurs utilisateurs ou vers des actions Gmail nécessite de revoir le modèle de session, le stockage, les scopes et les contrôles de consentement.

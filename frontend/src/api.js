@@ -25,6 +25,8 @@ export const api = {
   getStatus: () => request('/api/auth/status'),
   getEmails: (pageToken, limit = 20) =>
     request(`/api/emails?limit=${Math.min(Math.max(Number(limit) || 20, 1), 50)}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`),
+  getIsolation: (pageToken, limit = 50) =>
+    request(`/api/isolation?limit=${Math.min(Math.max(Number(limit) || 50, 1), 50)}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`),
   quarantineEmail: (id) => request(`/api/emails/${encodeURIComponent(id)}/quarantine`, {
     method: 'POST',
     headers: { 'X-MailMind-Confirm': 'quarantine' },
@@ -32,6 +34,23 @@ export const api = {
   restoreEmail: (id) => request(`/api/emails/${encodeURIComponent(id)}/restore`, {
     method: 'POST',
     headers: { 'X-MailMind-Confirm': 'restore' },
+  }),
+  isolateEmail: (id) => request(`/api/emails/${encodeURIComponent(id)}/isolate`, {
+    method: 'POST',
+    headers: { 'X-MailMind-Confirm': 'isolate' },
+  }),
+  markIsolationSpam: (id) => request(`/api/isolation/${encodeURIComponent(id)}/spam`, {
+    method: 'POST',
+    headers: { 'X-MailMind-Confirm': 'spam' },
+  }),
+  trashIsolatedEmail: (id) => request(`/api/isolation/${encodeURIComponent(id)}/trash`, {
+    method: 'POST',
+    headers: { 'X-MailMind-Confirm': 'trash' },
+  }),
+  trashAllIsolated: (expectedCount, confirmation) => request('/api/isolation/trash-all', {
+    method: 'POST',
+    headers: { 'X-MailMind-Confirm': 'trash-all' },
+    body: JSON.stringify({ expectedCount, confirmation }),
   }),
   analyzeEmail: (email) => request('/api/ai/analyze', {
     method: 'POST',

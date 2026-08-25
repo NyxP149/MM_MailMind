@@ -49,7 +49,7 @@ export function EmailRow({ email, index, editable = false, decision, onCategoryC
           ) : decision === 'confirmed' ? (
             <>
               <button className="decision-indicator confirmed" onClick={() => onDecision(email.id, null)} title="Annuler la confirmation"><ShieldCheck size={14} /> Confirmé <RotateCcw size={12} /></button>
-              <button className="gmail-action apply" onClick={() => onGmailAction?.(email, 'quarantine')} disabled={gmailBusy}>{gmailBusy ? <LoaderCircle className="spin" size={14} /> : <Tags size={14} />} Appliquer dans Gmail</button>
+              <button className="gmail-action apply" onClick={() => onGmailAction?.(email, 'isolate')} disabled={gmailBusy}>{gmailBusy ? <LoaderCircle className="spin" size={14} /> : <Tags size={14} />} Isoler dans Gmail</button>
             </>
           ) : (
             <>

@@ -7,9 +7,18 @@ import {
   createAuthorizationUrl,
   createGoogleAuth,
   getProfile,
+  listIsolatedMessages,
   listMessages,
 } from './google.js';
-import { isValidMessageId, quarantineMessage, restoreMessage } from './gmail-actions.js';
+import {
+  isolateMessage,
+  isValidMessageId,
+  markIsolatedAsSpam,
+  quarantineMessage,
+  restoreMessage,
+  trashAllIsolatedMessages,
+  trashIsolatedMessage,
+} from './gmail-actions.js';
 import { AIServiceError, analyzeEmailWithAI } from './ai.js';
 import { createAIJobManager } from './ai-jobs.js';
 import { createAgentScheduler } from './agent-scheduler.js';
@@ -186,6 +195,21 @@ export function createApp(config) {
     }
   });
 
+  app.get('/api/isolation', async (req, res) => {
+    if (!connected || !oauthClient.credentials.access_token) {
+      return apiError(res, 401, 'NOT_CONNECTED', 'Connectez d’abord votre compte Gmail.');
+    }
+    try {
+      return res.json(await listIsolatedMessages(oauthClient, {
+        pageToken: req.query.pageToken,
+        maxResults: req.query.limit,
+      }));
+    } catch (error) {
+      console.error('Isolation list failed:', error.message);
+      return apiError(res, 502, 'ISOLATION_LIST_FAILED', 'Impossible de charger le sas MailMind.');
+    }
+  });
+
   async function applyGmailAction(req, res, action) {
     if (!connected || !oauthClient.credentials.access_token) {
       return apiError(res, 401, 'NOT_CONNECTED', 'Connectez d’abord votre compte Gmail.');
@@ -201,11 +225,14 @@ export function createApp(config) {
       const result = action === 'quarantine'
         ? await quarantineMessage(oauthClient, req.params.id)
         : await restoreMessage(oauthClient, req.params.id);
-      auditLog.unshift({ messageId: req.params.id, action, at: new Date().toISOString() });
+      auditLog.unshift({ action, at: new Date().toISOString() });
       auditLog.splice(100);
       return res.json(result);
     } catch (error) {
       console.error(`Gmail ${action} failed:`, error.message);
+      if (error.code === 'NOT_ISOLATED') {
+        return apiError(res, 409, 'NOT_ISOLATED', 'Ce message n’est plus présent dans le sas MailMind.');
+      }
       if ([401, 403].includes(Number(error.code || error.response?.status))) {
         return apiError(res, 403, 'GMAIL_PERMISSION_REQUIRED', 'Reconnectez Google pour autoriser la gestion réversible des labels.');
       }
@@ -215,6 +242,64 @@ export function createApp(config) {
 
   app.post('/api/emails/:id/quarantine', (req, res) => applyGmailAction(req, res, 'quarantine'));
   app.post('/api/emails/:id/restore', (req, res) => applyGmailAction(req, res, 'restore'));
+
+  async function applyIsolationAction(req, res, action, callback) {
+    if (!connected || !oauthClient.credentials.access_token) {
+      return apiError(res, 401, 'NOT_CONNECTED', 'Connectez d’abord votre compte Gmail.');
+    }
+    if (!isValidMessageId(req.params.id)) {
+      return apiError(res, 400, 'INVALID_MESSAGE_ID', 'Identifiant Gmail invalide.');
+    }
+    if (req.get('x-mailmind-confirm') !== action) {
+      return apiError(res, 409, 'CONFIRMATION_REQUIRED', 'Une confirmation explicite est requise.');
+    }
+    try {
+      const result = await callback(oauthClient, req.params.id);
+      auditLog.unshift({ action, at: new Date().toISOString() });
+      auditLog.splice(100);
+      return res.json(result);
+    } catch (error) {
+      console.error(`Isolation ${action} failed:`, error.message);
+      if (error.code === 'NOT_ISOLATED') {
+        return apiError(res, 409, 'NOT_ISOLATED', 'Ce message n’est plus présent dans le sas MailMind.');
+      }
+      if ([401, 403].includes(Number(error.code || error.response?.status))) {
+        return apiError(res, 403, 'GMAIL_PERMISSION_REQUIRED', 'Reconnectez Google pour autoriser cette action Gmail.');
+      }
+      return apiError(res, 502, 'ISOLATION_ACTION_FAILED', 'Gmail n’a pas pu appliquer cette action.');
+    }
+  }
+
+  app.post('/api/emails/:id/isolate', (req, res) => applyIsolationAction(req, res, 'isolate', isolateMessage));
+  app.post('/api/isolation/:id/spam', (req, res) => applyIsolationAction(req, res, 'spam', markIsolatedAsSpam));
+  app.post('/api/isolation/:id/trash', (req, res) => applyIsolationAction(req, res, 'trash', trashIsolatedMessage));
+
+  app.post('/api/isolation/trash-all', async (req, res) => {
+    if (!connected || !oauthClient.credentials.access_token) {
+      return apiError(res, 401, 'NOT_CONNECTED', 'Connectez d’abord votre compte Gmail.');
+    }
+    const expectedCount = Number(req.body?.expectedCount);
+    if (!Number.isInteger(expectedCount) || expectedCount < 1 || expectedCount > 500
+      || req.body?.confirmation !== `CORBEILLE ${expectedCount}`
+      || req.get('x-mailmind-confirm') !== 'trash-all') {
+      return apiError(res, 409, 'CONFIRMATION_REQUIRED', 'Saisissez la confirmation exacte correspondant au nombre de messages.');
+    }
+    try {
+      const result = await trashAllIsolatedMessages(oauthClient, expectedCount);
+      auditLog.unshift({ action: 'trash-all', count: result.trashed, failed: result.failed, at: new Date().toISOString() });
+      auditLog.splice(100);
+      return res.json(result);
+    } catch (error) {
+      console.error('Isolation trash-all failed:', error.message);
+      if (error.code === 'ISOLATION_COUNT_CHANGED') {
+        return apiError(res, 409, 'ISOLATION_COUNT_CHANGED', 'Le contenu du sas a changé. Actualisez avant de confirmer.');
+      }
+      if (error.code === 'ISOLATION_LIMIT_EXCEEDED') {
+        return apiError(res, 409, 'ISOLATION_LIMIT_EXCEEDED', error.message);
+      }
+      return apiError(res, 502, 'ISOLATION_ACTION_FAILED', 'Gmail n’a pas pu vider entièrement le sas.');
+    }
+  });
 
   app.get('/api/audit', (_req, res) => {
     if (!connected) return apiError(res, 401, 'NOT_CONNECTED', 'Connectez d’abord votre compte Gmail.');

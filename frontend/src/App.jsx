@@ -23,6 +23,7 @@ import {
   Sparkles,
   Tag,
   Sun,
+  Trash2,
 } from 'lucide-react';
 import { api } from './api.js';
 import { Brand } from './components/Brand.jsx';
@@ -35,6 +36,7 @@ import { RulesManager } from './components/RulesManager.jsx';
 import { AIAssistant } from './components/AIAssistant.jsx';
 import { LearningDashboard } from './components/LearningDashboard.jsx';
 import { AgentControl } from './components/AgentControl.jsx';
+import { IsolationVault } from './components/IsolationVault.jsx';
 import { applyClassificationOverrides, applyCustomRules, applyLearnedPreferences, createLearningExample, mergeEmails, readLocalMap, upsertLearningExample } from './classification.js';
 import { resolveTheme, THEME_KEY } from './theme.js';
 
@@ -85,7 +87,7 @@ function Welcome({ configured, missing }) {
             <span>Complétez le fichier <code>backend/.env</code> ({missing?.join(', ')}).</span>
           </div>
         )}
-        <div className="privacy-note"><ShieldCheck size={17} /> Lecture et labels Gmail. Aucune suppression d’e-mail.</div>
+        <div className="privacy-note"><ShieldCheck size={17} /> Actions Gmail manuelles. Aucune suppression définitive.</div>
       </section>
       <section className="welcome-visual" aria-label="Aperçu de MailMind">
         <div className="orb orb-one" />
@@ -129,6 +131,9 @@ export default function App() {
   const [scanProgress, setScanProgress] = useState(0);
   const [scanNotice, setScanNotice] = useState('');
   const [gmailBusyId, setGmailBusyId] = useState(null);
+  const [isolation, setIsolation] = useState({ label: 'MailMind/À supprimer', messages: [], total: 0, nextPageToken: null, alertThreshold: 300 });
+  const [isolationLoading, setIsolationLoading] = useState(false);
+  const [isolationBulkBusy, setIsolationBulkBusy] = useState(false);
   const [actionHistory, setActionHistory] = useState(() => {
     const stored = readLocalMap(ACTION_HISTORY_KEY);
     return Array.isArray(stored) ? stored : [];
@@ -180,6 +185,20 @@ export default function App() {
     }
   }, []);
 
+  const loadIsolation = useCallback(async (pageToken) => {
+    setIsolationLoading(true);
+    try {
+      const data = await api.getIsolation(pageToken);
+      setIsolation((current) => pageToken
+        ? { ...data, messages: mergeEmails(current.messages, data.messages) }
+        : data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIsolationLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     const authResult = new URLSearchParams(window.location.search).get('auth');
     if (authResult && authResult !== 'success') setError(authMessages[authResult] || 'Connexion impossible.');
@@ -188,7 +207,7 @@ export default function App() {
     api.getStatus()
       .then((data) => {
         setStatus(data);
-        if (data.connected) return loadEmails();
+        if (data.connected) return Promise.all([loadEmails(), loadIsolation()]);
         setLoading(false);
       })
       .catch((err) => {
@@ -196,12 +215,13 @@ export default function App() {
         setStatus({ connected: false, configured: false });
         setLoading(false);
       });
-  }, [loadEmails]);
+  }, [loadEmails, loadIsolation]);
 
   const logout = async () => {
     await api.logout();
     setStatus({ connected: false, configured: true });
     setEmails([]);
+    setIsolation({ label: 'MailMind/À supprimer', messages: [], total: 0, nextPageToken: null, alertThreshold: 300 });
   };
 
   const ruledEmails = applyCustomRules(emails, customRules);
@@ -221,6 +241,7 @@ export default function App() {
     inbox: { eyebrow: 'Boîte de réception', title: 'Bonjour 👋', description: 'Voici les derniers messages de votre boîte Gmail.', panel: 'Messages récents' },
     categories: { eyebrow: 'Analyse par règles', title: 'Catégories', description: 'Comprenez pourquoi MailMind classe chaque message.', panel: selectedCategory ? 'Messages filtrés' : 'Tous les messages analysés' },
     quarantine: { eyebrow: 'Zone protégée', title: 'Quarantaine', description: 'Validez chaque suggestion avant d’appliquer un label réversible dans Gmail.', panel: 'À vérifier en priorité' },
+    vault: { eyebrow: 'Nettoyage V9', title: 'Sas d’isolation', description: 'Vérifiez, restaurez ou éliminez manuellement les messages isolés dans Gmail.', panel: 'Messages isolés' },
     quality: { eyebrow: 'Évaluation V2', title: 'Qualité des règles', description: 'Mesurez la précision des suggestions à partir de vos validations.', panel: 'Messages évalués' },
     dashboard: { eyebrow: 'Tableau de bord V3', title: 'Votre activité', description: 'Suivez les analyses, validations et actions réversibles de MailMind.', panel: 'Activité' },
     rules: { eyebrow: 'Personnalisation V4', title: 'Règles personnalisées', description: 'Adaptez les suggestions MailMind à vos propres préférences.', panel: 'Règles' },
@@ -334,19 +355,19 @@ export default function App() {
   };
 
   const applyGmailAction = async (email, action) => {
-    const quarantine = action === 'quarantine';
+    const isolate = action === 'isolate';
     const accepted = window.confirm(
-      quarantine
-        ? `Ajouter le label « MailMind/Quarantine » à « ${email.subject} » dans Gmail ?\n\nLe message ne sera ni supprimé ni déplacé.`
-        : `Retirer le label « MailMind/Quarantine » de « ${email.subject} » ?`,
+      isolate
+        ? `Isoler « ${email.subject} » dans « MailMind/À supprimer » ?\n\nLe message sera archivé et restera accessible dans Gmail. Il ne sera ni envoyé au Spam ni supprimé.`
+        : `Restaurer « ${email.subject} » dans la boîte de réception et le retirer du sas MailMind ?`,
     );
     if (!accepted) return;
 
     setGmailBusyId(email.id);
     setError('');
     try {
-      const result = quarantine
-        ? await api.quarantineEmail(email.id)
+      const result = isolate
+        ? await api.isolateEmail(email.id)
         : await api.restoreEmail(email.id);
       setEmails((current) => current.map((item) => item.id === email.id ? { ...item, quarantined: result.quarantined } : item));
       setActionHistory((current) => {
@@ -359,11 +380,62 @@ export default function App() {
         localStorage.setItem(ACTION_HISTORY_KEY, JSON.stringify(next));
         return next;
       });
-      setScanNotice(result.quarantined ? 'Label MailMind/Quarantine ajouté dans Gmail.' : 'Label MailMind/Quarantine retiré de Gmail.');
+      await loadIsolation();
+      setScanNotice(result.quarantined ? 'Message isolé dans MailMind/À supprimer.' : 'Message restauré dans la boîte de réception.');
     } catch (err) {
       setError(err.message);
     } finally {
       setGmailBusyId(null);
+    }
+  };
+
+  const applyIsolationAction = async (email, action) => {
+    const prompts = {
+      restore: `Restaurer « ${email.subject} » dans la boîte de réception ?`,
+      spam: `Signaler « ${email.subject} » comme spam ?\n\nGoogle pourra analyser ce message et classer plus sévèrement les futurs messages similaires.`,
+      trash: `Mettre « ${email.subject} » à la corbeille ?\n\nLe message restera récupérable depuis la corbeille Gmail.`,
+    };
+    if (!window.confirm(prompts[action])) return;
+    setGmailBusyId(email.id);
+    setError('');
+    try {
+      if (action === 'restore') await api.restoreEmail(email.id);
+      else if (action === 'spam') await api.markIsolationSpam(email.id);
+      else await api.trashIsolatedEmail(email.id);
+      setActionHistory((current) => {
+        const next = [{ action: `isolation-${action}`, at: new Date().toISOString(), category: email.classification?.id || 'autre', categoryLabel: email.classification?.label || 'Autre' }, ...current].slice(0, 100);
+        localStorage.setItem(ACTION_HISTORY_KEY, JSON.stringify(next));
+        return next;
+      });
+      setEmails((current) => current.map((item) => item.id === email.id ? { ...item, quarantined: false } : item));
+      await loadIsolation();
+      setScanNotice(action === 'restore' ? 'Message restauré dans la réception.' : action === 'spam' ? 'Message signalé comme spam.' : 'Message déplacé vers la corbeille.');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setGmailBusyId(null);
+    }
+  };
+
+  const trashAllIsolation = async () => {
+    const count = Number(isolation.total || 0);
+    if (!count) return;
+    const confirmation = window.prompt(`Mettre les ${count} messages du sas à la corbeille ?\n\nCette action ne touche pas les autres messages Gmail. Saisissez exactement : CORBEILLE ${count}`);
+    if (confirmation !== `CORBEILLE ${count}`) {
+      if (confirmation !== null) setError('Confirmation incorrecte : aucun message n’a été déplacé.');
+      return;
+    }
+    setIsolationBulkBusy(true);
+    setError('');
+    try {
+      const result = await api.trashAllIsolated(count, confirmation);
+      await loadIsolation();
+      setScanNotice(`${result.trashed} message(s) déplacé(s) vers la corbeille${result.failed ? `, ${result.failed} échec(s)` : ''}.`);
+    } catch (err) {
+      setError(err.message);
+      await loadIsolation();
+    } finally {
+      setIsolationBulkBusy(false);
     }
   };
 
@@ -411,6 +483,7 @@ export default function App() {
           <button className={activeView === 'dashboard' ? 'nav-item active' : 'nav-item'} onClick={() => changeView('dashboard')}><LayoutDashboard size={19} /> Tableau de bord <span className="v3-badge">V3</span></button>
           <button className={activeView === 'categories' ? 'nav-item active' : 'nav-item'} onClick={() => changeView('categories')}><Tag size={19} /> Catégories <span className="v2-badge">V2</span></button>
           <button className={activeView === 'quarantine' ? 'nav-item active' : 'nav-item'} onClick={() => changeView('quarantine')}><ShieldAlert size={19} /> Quarantaine <b>{effectiveEmails.filter((email) => email.classification?.action === 'quarantine' && decisions[email.id] !== 'safe').length}</b></button>
+          <button className={activeView === 'vault' ? 'nav-item active' : 'nav-item'} onClick={() => changeView('vault')}><Trash2 size={19} /> Sas de nettoyage <b>{isolation.total}</b></button>
           <button className={activeView === 'quality' ? 'nav-item active' : 'nav-item'} onClick={() => changeView('quality')}><BarChart3 size={19} /> Qualité <span className="v2-badge">V2</span></button>
           <button className={activeView === 'rules' ? 'nav-item active' : 'nav-item'} onClick={() => changeView('rules')}><ListChecks size={19} /> Règles <span className="v4-badge">V4</span></button>
           <button className={activeView === 'assistant' ? 'nav-item active' : 'nav-item'} onClick={() => changeView('assistant')}><Sparkles size={19} /> Assistant <span className="v5-badge">V5</span></button>
@@ -418,7 +491,7 @@ export default function App() {
           <button className={activeView === 'agent' ? 'nav-item active' : 'nav-item'} onClick={() => changeView('agent')}><Bot size={19} /> Agent contrôlé <span className="v7-badge">V7</span></button>
         </nav>
         <div className="sidebar-footer">
-          <div className="privacy-card"><ShieldCheck size={20} /><div><strong>Vos données restent privées</strong><span>{status.deployment?.persistence ? 'Jetons chiffrés · Déploiement privé V8' : 'Labels réversibles via Google'}</span></div></div>
+          <div className="privacy-card"><ShieldCheck size={20} /><div><strong>Vos données restent privées</strong><span>{status.deployment?.persistence ? 'Jetons chiffrés · Sas contrôlé V9' : 'Actions Gmail manuelles'}</span></div></div>
           <button className="account-button"><span>{status.profile?.email?.[0]?.toUpperCase()}</span><div><strong>{status.profile?.email?.split('@')[0]}</strong><small>{status.profile?.email}</small></div><ChevronDown size={16} /></button>
           <button className="logout-button" onClick={logout}><LogOut size={16} /> Déconnecter Gmail</button>
           <div className="powered-by">Powered by <strong>JarVyX</strong></div>
@@ -435,7 +508,7 @@ export default function App() {
         <main className="inbox-main" id={activeView}>
           <div className="inbox-heading">
             <div><span className="eyebrow">{viewCopy.eyebrow}</span><h1>{viewCopy.title}</h1><p>{viewCopy.description}</p></div>
-            <div className="heading-actions">
+            {activeView !== 'vault' && <div className="heading-actions">
               <div className="scan-control">
                 <select value={scanTarget} onChange={(event) => setScanTarget(Number(event.target.value))} disabled={scanning} aria-label="Nombre de messages à analyser">
                   <option value={50}>50 messages</option>
@@ -448,14 +521,16 @@ export default function App() {
                 </button>
               </div>
               <button className="refresh-button" onClick={() => { setScanNotice(''); loadEmails(); }} disabled={loading || scanning}><RefreshCw size={17} className={loading ? 'spin' : ''} /> Actualiser</button>
-            </div>
+            </div>}
           </div>
           {error && <div className="inline-error" role="alert">{error}<button onClick={() => loadEmails()}>Réessayer</button></div>}
           {scanNotice && <div className="scan-notice" role="status"><ScanSearch size={16} /> {scanNotice}</div>}
-          {activeView !== 'inbox' && activeView !== 'quality' && activeView !== 'dashboard' && activeView !== 'rules' && activeView !== 'assistant' && activeView !== 'learning' && activeView !== 'agent' && !loading && (
+          {activeView !== 'inbox' && activeView !== 'vault' && activeView !== 'quality' && activeView !== 'dashboard' && activeView !== 'rules' && activeView !== 'assistant' && activeView !== 'learning' && activeView !== 'agent' && !loading && (
             <ClassificationOverview emails={effectiveEmails} selectedCategory={selectedCategory} onSelectCategory={setSelectedCategory} decisions={decisions} />
           )}
-          {activeView === 'learning' && !loading ? (
+          {activeView === 'vault' ? (
+            <IsolationVault data={isolation} loading={isolationLoading} busyId={gmailBusyId} bulkBusy={isolationBulkBusy} onRefresh={() => loadIsolation()} onLoadMore={() => loadIsolation(isolation.nextPageToken)} onAction={applyIsolationAction} onTrashAll={trashAllIsolation} />
+          ) : activeView === 'learning' && !loading ? (
             <LearningDashboard examples={learningExamples} onReset={resetLearning} />
           ) : activeView === 'agent' && !loading ? (
             <AgentControl emails={effectiveEmails} decisions={decisions} reports={agentReports} onSaveReport={saveAgentReport} onQuarantine={applyAgentQuarantine} />
@@ -469,12 +544,12 @@ export default function App() {
             <QualityDashboard emails={effectiveEmails} rawEmails={emails} decisions={decisions} overrides={classificationOverrides} />
           ) : (
             <section className="mail-panel">
-              <div className="panel-head"><div><h2>{viewCopy.panel}</h2><span>{visibleEmails.length} affichés</span></div><span className="safe-badge"><ShieldCheck size={15} /> Aucune suppression</span></div>
+              <div className="panel-head"><div><h2>{viewCopy.panel}</h2><span>{visibleEmails.length} affichés</span></div><span className="safe-badge"><ShieldCheck size={15} /> Aucune suppression définitive</span></div>
               {loading ? <SkeletonRows /> : visibleEmails.length ? <div className="email-list">{visibleEmails.map((email, index) => <EmailRow key={email.id} email={email} index={index} editable={activeView !== 'inbox'} decision={decisions[email.id]} onCategoryChange={updateCategory} onDecision={activeView === 'quarantine' ? updateDecision : undefined} onGmailAction={activeView === 'quarantine' ? applyGmailAction : undefined} gmailBusy={gmailBusyId === email.id} />)}</div> : <EmptyState />}
               {nextPageToken && !query && <div className="load-more"><button onClick={() => loadEmails(nextPageToken)} disabled={loadingMore}>{loadingMore ? 'Chargement…' : 'Afficher plus de messages'}</button></div>}
             </section>
           )}
-          <p className="v1-note"><ShieldCheck size={15} /> {activeView === 'assistant' ? 'Version 5 — L’IA conseille uniquement après votre consentement. Aucune action Gmail.' : activeView === 'learning' ? 'Version 6 — L’apprentissage reste local, explicable et réversible. Aucune action Gmail.' : activeView === 'agent' ? 'Version 7 — Seuls les labels explicitement autorisés sont appliqués. Aucune suppression.' : 'Version 2 — Gmail ne change qu’après votre confirmation explicite. Aucune suppression.'}</p>
+          <p className="v1-note"><ShieldCheck size={15} /> {activeView === 'assistant' ? 'Version 5 — L’IA conseille uniquement après votre consentement. Aucune action Gmail.' : activeView === 'learning' ? 'Version 6 — L’apprentissage reste local, explicable et réversible. Aucune action Gmail.' : activeView === 'agent' ? 'Version 7 — Seuls les labels explicitement autorisés sont appliqués. Aucune suppression.' : activeView === 'vault' ? 'Version 9 — Isolation, Spam et corbeille exigent toujours votre confirmation. Aucune suppression définitive.' : 'Version 9 — Gmail ne change qu’après votre confirmation explicite. Aucune suppression définitive.'}</p>
         </main>
       </div>
       {sidebarOpen && <button className="sidebar-scrim" onClick={() => setSidebarOpen(false)} aria-label="Fermer le menu" />}

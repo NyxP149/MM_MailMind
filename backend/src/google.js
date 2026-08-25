@@ -1,6 +1,6 @@
 import { google } from 'googleapis';
 import { classifyEmail, summarizeClassifications } from './classifier.js';
-import { findQuarantineLabel } from './gmail-actions.js';
+import { ensureQuarantineLabel, findQuarantineLabel, ISOLATION_LABEL } from './gmail-actions.js';
 
 const GMAIL_MODIFY_SCOPE = 'https://www.googleapis.com/auth/gmail.modify';
 
@@ -82,6 +82,35 @@ export async function listMessages(oauthClient, { pageToken, maxResults = 20 } =
     summary: summarizeClassifications(messages),
     nextPageToken: listResponse.data.nextPageToken || null,
     resultSizeEstimate: listResponse.data.resultSizeEstimate || messages.length,
+  };
+}
+
+export async function listIsolatedMessages(oauthClient, { pageToken, maxResults = 50 } = {}) {
+  const gmail = google.gmail({ version: 'v1', auth: oauthClient });
+  const label = await ensureQuarantineLabel(gmail);
+  const listResponse = await gmail.users.messages.list({
+    userId: 'me',
+    labelIds: [label.id],
+    q: '-in:trash -in:spam',
+    maxResults: Math.min(Math.max(Number(maxResults) || 50, 1), 50),
+    pageToken,
+  });
+  const messageRefs = listResponse.data.messages || [];
+  const messages = await Promise.all(messageRefs.map(async ({ id }) => {
+    const response = await gmail.users.messages.get({
+      userId: 'me',
+      id,
+      format: 'metadata',
+      metadataHeaders: ['From', 'Subject', 'Date'],
+    });
+    return normalizeMessage(response.data, label.id);
+  }));
+  return {
+    label: ISOLATION_LABEL,
+    messages,
+    total: Number(listResponse.data.resultSizeEstimate || messages.length),
+    nextPageToken: listResponse.data.nextPageToken || null,
+    alertThreshold: 300,
   };
 }
 
