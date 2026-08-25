@@ -210,7 +210,7 @@ Le centre d’activité réunit les simulations manuelles, les simulations plani
 
 ## Déploiement privé V8
 
-La V8 fournit un déploiement Docker mono-utilisateur derrière un domaine HTTPS et Cloudflare Access. Nginx sert la PWA et relaie `/api` vers un backend non exposé directement. Les jetons OAuth Google et l’état de la planification sont chiffrés en AES-256-GCM sur un volume Docker persistant. L’interface indique « Déploiement privé V8 » lorsque cette persistance est réellement active.
+La V8 fournit un déploiement Docker mono-utilisateur, utilisable uniquement sur `localhost` sans domaine ou derrière un domaine HTTPS et Cloudflare Access. Nginx sert la PWA et relaie `/api` vers un backend non exposé directement. Les jetons OAuth Google et l’état de la planification sont chiffrés en AES-256-GCM sur un volume Docker persistant. L’interface indique « Déploiement privé V8 » lorsque cette persistance est réellement active.
 
 ```powershell
 .\deploy\initialize-deployment.ps1 -PublicUrl https://mailmind.votre-domaine.com
@@ -219,4 +219,6 @@ La V8 fournit un déploiement Docker mono-utilisateur derrière un domaine HTTPS
 .\deploy\mailmind.ps1 up
 ```
 
-MailMind écoute uniquement sur `127.0.0.1:8080`. Publiez cette adresse avec Cloudflare Tunnel et protégez le domaine avec Cloudflare Access. La procédure complète est décrite dans `MM_deploy.md`. Cette V8 reste privée et mono-utilisateur : elle ne constitue pas une architecture SaaS publique.
+Sans domaine, générez plutôt la configuration avec `.\deploy\initialize-deployment.ps1 -PublicUrl http://localhost:8080 -ReuseBackendEnv`.
+
+MailMind écoute uniquement sur `127.0.0.1:8080`. Gardez cette adresse locale pour un usage sur la machine, ou publiez-la avec Cloudflare Tunnel et protégez le domaine avec Cloudflare Access. La procédure complète est décrite dans `MM_deploy.md`. Cette V8 reste privée et mono-utilisateur : elle ne constitue pas une architecture SaaS publique.

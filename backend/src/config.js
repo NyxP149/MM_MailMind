@@ -15,9 +15,12 @@ export function getConfig(env = process.env) {
     ? true
     : aiProvider === 'openai' && Boolean(env.OPENAI_API_KEY);
 
+  const frontendUrl = env.FRONTEND_URL || 'http://localhost:5173';
+  const isProduction = env.NODE_ENV === 'production';
+
   return {
     port: Number(env.PORT || 3000),
-    frontendUrl: env.FRONTEND_URL || 'http://localhost:5173',
+    frontendUrl,
     googleClientId: env.GOOGLE_CLIENT_ID,
     googleClientSecret: env.GOOGLE_CLIENT_SECRET,
     googleRedirectUri:
@@ -26,7 +29,8 @@ export function getConfig(env = process.env) {
     cookieSecret: env.COOKIE_SECRET,
     oauthReady: missing.length === 0,
     missing,
-    isProduction: env.NODE_ENV === 'production',
+    isProduction,
+    cookieSecure: isProduction && frontendUrl.startsWith('https://'),
     aiProvider,
     aiModel,
     aiReady,

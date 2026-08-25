@@ -123,7 +123,7 @@ La V7.2 ajoute une vue d’audit unifiée sans créer une nouvelle source de don
 
 ## Déploiement privé V8
 
-La V8 cible un seul utilisateur derrière un contrôle d’accès réseau. Elle ne transforme pas l’état OAuth global en modèle multi-utilisateur. Le point d’entrée unique est un proxy Nginx lié uniquement à l’interface locale de l’hôte. Il sert les ressources PWA et transmet `/api` au backend sur le réseau Docker interne. Cloudflare Tunnel fournit le transport HTTPS sortant et Cloudflare Access limite les visiteurs autorisés.
+La V8 cible un seul utilisateur. Elle ne transforme pas l’état OAuth global en modèle multi-utilisateur. Le point d’entrée unique est un proxy Nginx lié uniquement à l’interface locale de l’hôte. Il sert les ressources PWA et transmet `/api` au backend sur le réseau Docker interne. Ce point d’entrée peut rester strictement local, sans domaine, ou être publié : Cloudflare Tunnel fournit alors le transport HTTPS sortant et Cloudflare Access limite les visiteurs autorisés.
 
 La reprise après redémarrage repose sur deux enveloppes AES-256-GCM : les identifiants OAuth d’un côté et l’état de l’ordonnanceur de l’autre. Une clé de déploiement d’au moins 32 caractères est dérivée en clé de chiffrement de 256 bits ; chaque écriture utilise un IV aléatoire et un tag d’authentification. Les fichiers sont écrits sur un volume Docker avec remplacement atomique et ne contiennent jamais de clair. La déconnexion révoque les identifiants puis efface les deux enveloppes.
 

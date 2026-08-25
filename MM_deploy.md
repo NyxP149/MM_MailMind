@@ -36,6 +36,18 @@ Depuis la racine du dépôt :
 .\deploy\initialize-deployment.ps1 -PublicUrl https://mailmind.votre-domaine.com
 ```
 
+Pour un déploiement privé limité à cette machine, aucun domaine n'est requis :
+
+```powershell
+.\deploy\initialize-deployment.ps1 -PublicUrl http://localhost:8080 -ReuseBackendEnv
+.\deploy\mailmind.ps1 config
+.\deploy\mailmind.ps1 up
+```
+
+Ajoutez alors `http://localhost:8080` aux origines JavaScript autorisées et
+`http://localhost:8080/api/auth/google/callback` aux URI de redirection du client OAuth Google.
+L'exception HTTP est strictement limitée à `localhost`, conformément aux règles OAuth de Google.
+
 Le script crée `.env.deploy`, génère `COOKIE_SECRET` et `DATA_ENCRYPTION_KEY`, puis refuse d’écraser un fichier existant. Ouvrez ce fichier et remplacez uniquement les valeurs Google :
 
 ```dotenv

@@ -115,6 +115,8 @@ Les routes `/api/agent/schedule` permettent de lire, activer ou désactiver l’
 
 `compose.yaml` construit deux images : Node pour l’API et Nginx pour la PWA. Le backend est accessible uniquement au proxy sur le réseau Docker. Le port frontend est lié à `127.0.0.1`, les données chiffrées résident dans `mailmind-data` et les deux services possèdent un healthcheck. En production, `api.js` utilise l’origine courante lorsque `VITE_API_URL` est absent ; le développement conserve `http://localhost:3000`.
 
+`initialize-deployment.ps1` accepte une origine HTTPS ou l’exception OAuth locale `http://localhost[:port]`. Son option `-ReuseBackendEnv` importe uniquement une liste blanche de paramètres Google et IA depuis `backend/.env`, puis génère de nouveaux secrets de cookie et de chiffrement. `mailmind.ps1` retrouve également les installations Docker Desktop par utilisateur lorsque `docker.exe` n’est pas encore dans le `PATH`. En production sur localhost, le cookie OAuth n’emploie pas l’attribut `Secure`; toute origine HTTPS de production le conserve.
+
 En production, un middleware refuse également toute méthode mutative dont l’en-tête `Origin` ne correspond pas exactement à `FRONTEND_URL`. Cette défense complète CORS pour les routes de déconnexion, IA, planification et labels Gmail ; les lectures et le développement local restent inchangés.
 
 

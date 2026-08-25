@@ -120,7 +120,7 @@ export function createApp(config) {
       signed: true,
       httpOnly: true,
       sameSite: 'lax',
-      secure: config.isProduction,
+      secure: config.cookieSecure,
       maxAge: 10 * 60 * 1000,
     });
     return res.redirect(createAuthorizationUrl(oauthClient, state));

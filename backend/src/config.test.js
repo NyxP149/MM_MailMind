@@ -20,3 +20,9 @@ test('getConfig active la persistance uniquement avec une configuration complèt
   assert.equal(getConfig({ DATA_ENCRYPTION_KEY: 'key', TOKEN_STORE_PATH: '/data/oauth.enc', AGENT_STATE_PATH: '/data/agent.enc' }).persistenceReady, false);
   assert.equal(getConfig({ DATA_ENCRYPTION_KEY: 'une-cle-de-chiffrement-de-32-caracteres', TOKEN_STORE_PATH: '/data/oauth.enc', AGENT_STATE_PATH: '/data/agent.enc' }).persistenceReady, true);
 });
+
+test('getConfig réserve le cookie Secure aux origines HTTPS de production', () => {
+  assert.equal(getConfig({ NODE_ENV: 'production', FRONTEND_URL: 'https://mailmind.example.com' }).cookieSecure, true);
+  assert.equal(getConfig({ NODE_ENV: 'production', FRONTEND_URL: 'http://localhost:8080' }).cookieSecure, false);
+  assert.equal(getConfig({ FRONTEND_URL: 'https://localhost' }).cookieSecure, false);
+});
