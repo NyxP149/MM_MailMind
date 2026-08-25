@@ -35,6 +35,47 @@ export function parseAddress(value = '') {
   return { name: name || email, email };
 }
 
+function unsubscribeTargets(value = '') {
+  const bracketed = [...value.matchAll(/<([^>]+)>/g)].map((match) => match[1]);
+  return (bracketed.length ? bracketed : value.split(','))
+    .map((target) => target.trim())
+    .filter((target) => target && target.length <= 2048);
+}
+
+export function parseListUnsubscribe(headers = []) {
+  const targets = unsubscribeTargets(getHeader(headers, 'List-Unsubscribe'));
+  const oneClick = /(?:^|[;,\s])List-Unsubscribe=One-Click(?:$|[;,\s])/i.test(
+    getHeader(headers, 'List-Unsubscribe-Post'),
+  );
+  let web = null;
+  let email = null;
+
+  for (const target of targets) {
+    try {
+      const url = new URL(target);
+      if (!web && url.protocol === 'https:' && !url.username && !url.password && (!url.port || url.port === '443')) {
+        web = url;
+      }
+      if (!email && url.protocol === 'mailto:' && !/[\r\n]/.test(target) && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(decodeURIComponent(url.pathname))) {
+        email = { url: target, address: decodeURIComponent(url.pathname) };
+      }
+    } catch {
+      // Un en-tête tiers malformé n'est jamais transmis à l'interface.
+    }
+  }
+
+  if (web) {
+    return {
+      available: true,
+      method: oneClick ? 'one-click' : 'web',
+      url: web.toString(),
+      host: web.hostname,
+    };
+  }
+  if (email) return { available: true, method: 'email', ...email };
+  return { available: false };
+}
+
 export function normalizeMessage(message, quarantineLabelId = null) {
   const headers = message.payload?.headers || [];
   const from = parseAddress(getHeader(headers, 'From'));
@@ -49,6 +90,7 @@ export function normalizeMessage(message, quarantineLabelId = null) {
     labels: message.labelIds || [],
     unread: (message.labelIds || []).includes('UNREAD'),
     quarantined: Boolean(quarantineLabelId && (message.labelIds || []).includes(quarantineLabelId)),
+    unsubscribe: parseListUnsubscribe(headers),
   };
 
   return { ...normalized, classification: classifyEmail(normalized) };
@@ -71,7 +113,7 @@ export async function listMessages(oauthClient, { pageToken, maxResults = 20 } =
         userId: 'me',
         id,
         format: 'metadata',
-        metadataHeaders: ['From', 'Subject', 'Date'],
+        metadataHeaders: ['From', 'Subject', 'Date', 'List-Unsubscribe', 'List-Unsubscribe-Post'],
       });
       return normalizeMessage(response.data, quarantineLabel?.id);
     }),
@@ -101,7 +143,7 @@ export async function listIsolatedMessages(oauthClient, { pageToken, maxResults 
       userId: 'me',
       id,
       format: 'metadata',
-      metadataHeaders: ['From', 'Subject', 'Date'],
+      metadataHeaders: ['From', 'Subject', 'Date', 'List-Unsubscribe', 'List-Unsubscribe-Post'],
     });
     return normalizeMessage(response.data, label.id);
   }));

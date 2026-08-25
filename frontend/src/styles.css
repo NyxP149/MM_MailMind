@@ -135,8 +135,8 @@ a { color: inherit; text-decoration: none; }
 .panel-head h2 { margin: 0; font: 700 14px Manrope, sans-serif; }
 .panel-head span { color: #9aa19e; font-size: 10px; }
 .safe-badge { display: flex; align-items: center; gap: 6px; color: #61782a !important; background: #f0f5d9; padding: 6px 9px; border-radius: 7px; font-weight: 600; }
-.email-row { min-height: 82px; padding: 13px 18px; display: grid; grid-template-columns: 39px minmax(125px, .8fr) minmax(240px, 2.2fr) 65px 34px; gap: 14px; align-items: center; border-bottom: 1px solid #eff0ec; position: relative; transition: background .15s; }
-.email-row.has-review { grid-template-columns: 39px minmax(115px, .7fr) minmax(200px, 1.8fr) 55px minmax(270px, auto); }
+.email-row { min-height: 82px; padding: 13px 18px; display: grid; grid-template-columns: 39px minmax(125px, .8fr) minmax(240px, 2.2fr) 65px minmax(34px, auto); gap: 14px; align-items: center; border-bottom: 1px solid #eff0ec; position: relative; transition: background .15s; }
+.email-row.has-review { grid-template-columns: 39px minmax(115px, .7fr) minmax(200px, 1.8fr) 55px minmax(320px, auto); }
 .email-row:last-child { border-bottom: 0; }
 .email-row:hover { background: #fafbf7; }
 .email-row.is-unread::before { content: ''; width: 3px; height: 28px; background: var(--violet); border-radius: 3px; position: absolute; left: 0; }
@@ -167,6 +167,9 @@ a { color: inherit; text-decoration: none; }
 .email-row time { color: #959c99; font-size: 10px; text-align: right; white-space: nowrap; }
 .star-button { width: 32px; height: 32px; color: #c1c5c2; }
 .star-button:hover { color: #d59c24; background: #fff6df; }
+.email-row-tools { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.unsubscribe-action { min-height: 30px; border: 1px solid #d8d2fb; border-radius: 8px; background: #f7f5ff; color: #6352c9; padding: 0 8px; display: inline-flex; align-items: center; gap: 5px; font-size: 8px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.unsubscribe-action:hover { background: #ece8ff; border-color: #bfb5ef; }
 .review-actions { display: flex; align-items: center; justify-content: flex-end; gap: 5px; }
 .review-button { min-height: 30px; border: 1px solid #e1e4dd; background: #fff; border-radius: 8px; padding: 0 8px; display: flex; align-items: center; gap: 5px; font-size: 8px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .review-button.safe { color: #68716e; }
@@ -572,7 +575,7 @@ a { color: inherit; text-decoration: none; }
 .isolation-toolbar .isolation-trash-all { border-color: #edc4c0; background: #fff4f2; color: #9e3e36; }
 .isolation-toolbar button:disabled { opacity: .5; cursor: default; }
 .isolation-panel { background: white; border: 1px solid #e1e4dd; border-radius: 17px; overflow: hidden; }
-.isolation-row { min-height: 84px; padding: 13px 18px; display: grid; grid-template-columns: 39px minmax(120px, .7fr) minmax(220px, 1.7fr) 60px minmax(245px, auto); gap: 13px; align-items: center; border-bottom: 1px solid #eff0ec; }
+.isolation-row { min-height: 84px; padding: 13px 18px; display: grid; grid-template-columns: 39px minmax(120px, .7fr) minmax(210px, 1.6fr) 60px minmax(315px, auto); gap: 13px; align-items: center; border-bottom: 1px solid #eff0ec; }
 .isolation-row:last-child { border-bottom: 0; }
 .isolation-row time { color: #959c99; font-size: 9px; text-align: right; }
 .isolation-actions { display: flex; justify-content: flex-end; gap: 5px; }
@@ -581,6 +584,7 @@ a { color: inherit; text-decoration: none; }
 .isolation-actions .isolation-restore { color: #397151; border-color: #c7dfcf; background: #f1faf4; }
 .isolation-actions .isolation-spam { color: #9b6a20; border-color: #ecd9ae; background: #fff9e9; }
 .isolation-actions .isolation-trash { color: #9e3e36; border-color: #edc4c0; background: #fff4f2; }
+.isolation-actions .isolation-unsubscribe { color: #6352c9; border-color: #d8d2fb; background: #f7f5ff; }
 .isolation-empty, .isolation-loading { min-height: 280px; display: grid; place-content: center; justify-items: center; gap: 8px; color: #8d9692; font-size: 11px; text-align: center; }
 .isolation-empty strong { color: #46514d; font: 700 14px Manrope, sans-serif; }
 .isolation-safety { padding: 11px 14px; border: 1px solid #dfe7bd; border-radius: 11px; background: #f2f6df; color: #697934; display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 9px; }
@@ -657,6 +661,9 @@ a { color: inherit; text-decoration: none; }
   .classification-badge { display: inline-block; margin-top: 2px; }
   .email-row time { grid-column: 3; grid-row: 1; align-self: start; padding-top: 4px; }
   .star-button { display: none; }
+  .email-row-tools { grid-column: 3; grid-row: 1; align-self: end; }
+  .unsubscribe-action span { display: none; }
+  .unsubscribe-action { width: 30px; padding: 0; justify-content: center; }
   .review-actions { position: absolute; left: 61px; right: 12px; bottom: 9px; justify-content: flex-start; }
   .review-button { min-height: 27px; }
   .v1-note { text-align: center; line-height: 1.4; padding: 0 20px; }
@@ -944,6 +951,8 @@ html[data-theme='dark'] .isolation-toolbar .isolation-trash-all,
 html[data-theme='dark'] .isolation-actions .isolation-trash { background: #2b1d1b; border-color: #55302b; color: #d99a91; }
 html[data-theme='dark'] .isolation-actions .isolation-restore { background: #172a20; border-color: #31523e; color: #83bd98; }
 html[data-theme='dark'] .isolation-actions .isolation-spam { background: #2a2416; border-color: #6e5726; color: #d6bb75; }
+html[data-theme='dark'] .unsubscribe-action,
+html[data-theme='dark'] .isolation-actions .isolation-unsubscribe { background: #241f3d; border-color: #493d78; color: #b8a7ff; }
 html[data-theme='dark'] .isolation-alert { background: #292415; border-color: #54451f; color: #c6a65b; }
 html[data-theme='dark'] .isolation-safety { background: #202916; border-color: #34431f; color: #9bad63; }
 

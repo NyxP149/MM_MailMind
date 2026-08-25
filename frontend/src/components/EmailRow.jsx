@@ -1,10 +1,15 @@
-import { Check, LoaderCircle, RotateCcw, ShieldCheck, Star, Tags, Undo2, X } from 'lucide-react';
+import { BellOff, Check, LoaderCircle, RotateCcw, ShieldCheck, Star, Tags, Undo2, X } from 'lucide-react';
 import { CATEGORY_OPTIONS } from '../classification.js';
 import { formatEmailDate, initials } from '../utils.js';
 
 const colors = ['violet', 'lime', 'amber', 'blue', 'rose'];
 
-export function EmailRow({ email, index, editable = false, decision, onCategoryChange, onDecision, onGmailAction, gmailBusy = false }) {
+export function EmailRow({ email, index, editable = false, decision, onCategoryChange, onDecision, onGmailAction, onUnsubscribe, gmailBusy = false }) {
+  const unsubscribeButton = email.unsubscribe?.available ? (
+    <button className="unsubscribe-action" onClick={() => onUnsubscribe?.(email)} title={`Se désabonner via ${email.unsubscribe.host || email.unsubscribe.address}`}>
+      <BellOff size={14} /><span>Désabonner</span>
+    </button>
+  ) : null;
   return (
     <article className={`email-row ${email.unread ? 'is-unread' : ''} ${decision ? `decision-${decision}` : ''} ${onDecision ? 'has-review' : ''}`}>
       <div className={`avatar avatar-${colors[index % colors.length]}`} aria-hidden="true">
@@ -41,6 +46,7 @@ export function EmailRow({ email, index, editable = false, decision, onCategoryC
       <time dateTime={email.date}>{formatEmailDate(email.date)}</time>
       {onDecision ? (
         <div className="review-actions">
+          {unsubscribeButton}
           {email.quarantined ? (
             <>
               <span className="gmail-state"><Tags size={13} /> Dans Gmail</span>
@@ -59,7 +65,10 @@ export function EmailRow({ email, index, editable = false, decision, onCategoryC
           )}
         </div>
       ) : (
-        <button className="icon-button star-button" aria-label={`Ajouter ${email.subject} aux favoris`}><Star size={18} /></button>
+        <div className="email-row-tools">
+          {unsubscribeButton}
+          <button className="icon-button star-button" aria-label={`Ajouter ${email.subject} aux favoris`}><Star size={18} /></button>
+        </div>
       )}
     </article>
   );

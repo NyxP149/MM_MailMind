@@ -10,7 +10,7 @@
 
 > Mise à jour V6 : moteur de préférences locales dérivé des corrections explicites.
 
-Ce document décrit l’implémentation actuellement présente dans le dépôt. Il sert de référence aux personnes qui développent, testent ou maintiennent MailMind. La version actuelle reste personnelle et mono-utilisateur ; elle peut fonctionner localement ou derrière le déploiement privé V8 et inclut le sas de nettoyage V9.
+Ce document décrit l’implémentation actuellement présente dans le dépôt. Il sert de référence aux personnes qui développent, testent ou maintiennent MailMind. La version actuelle reste personnelle et mono-utilisateur ; elle peut fonctionner localement ou derrière le déploiement privé V8 et inclut le sas V9 ainsi que le désabonnement contrôlé V10.
 
 ## 1. Vue d’ensemble technique
 
@@ -130,6 +130,14 @@ Les routes manuelles sont `POST /api/emails/:id/isolate`, `POST /api/isolation/:
 Avant Spam ou Corbeille, le backend relit le message et vérifie la présence du label d’isolement. Le vidage groupé parcourt au maximum 500 identifiants, compare le total réel au `expectedCount` fourni, exige dans le corps `CORBEILLE N`, puis traite cinq messages au maximum en parallèle. Un changement de contenu entre l’aperçu et la confirmation annule donc le lot.
 
 `IsolationVault.jsx` expose le compteur, l’alerte, la pagination, un lien direct vers la recherche Gmail du label et les quatre actions manuelles. Les sujets et expéditeurs restent seulement en mémoire d’interface ; l’historique local conserve des actions et catégories sans identifiant Gmail. Le composant n’offre aucun bouton de suppression définitive.
+
+## Implémentation du désabonnement V10
+
+`parseListUnsubscribe()` dans `backend/src/google.js` analyse uniquement les deux en-têtes standards demandés avec le format Gmail `metadata`. Il extrait les valeurs délimitées par chevrons, borne leur longueur, valide leur schéma avec `URL` et retourne `{ available, method, url, host|address }`. `normalizeMessage()` ajoute cet objet au modèle minimal déjà envoyé au frontend.
+
+`frontend/src/unsubscribe.js` effectue une seconde validation indépendante. `one-click` crée un formulaire POST temporaire vers l’URL HTTPS et ajoute le champ exact `List-Unsubscribe=One-Click`; `web` ouvre un nouvel onglet avec `noopener,noreferrer`; `email` ouvre le gestionnaire `mailto:`. Aucun `fetch` serveur et aucune nouvelle route API ne sont nécessaires.
+
+`EmailRow.jsx` affiche l’action dans toutes les vues lorsqu’elle existe. `IsolationVault.jsx` l’affiche également pour les messages isolés. `App.jsx` montre la destination, adapte l’avertissement au risque de la catégorie, exige `window.confirm` et journalise seulement la méthode lancée, la catégorie et la date. Le lancement est observable, mais MailMind ne prétend pas que l’expéditeur a réellement traité la demande.
 
 
 ```text
@@ -298,7 +306,7 @@ Les erreurs API ont la forme `{ "error": { "code": "…", "message": "…" } }`.
 
 ### Lecture et normalisation Gmail
 
-`listMessages()` appelle d’abord `users.messages.list` pour l’utilisateur `me`, avec la requête `in:anywhere`. La taille de page vaut 20 par défaut et est bornée entre 1 et 50. Pour chaque référence obtenue, un appel `users.messages.get` récupère seulement les métadonnées `From`, `Subject` et `Date`. Les appels de détail sont effectués en parallèle avec `Promise.all`.
+`listMessages()` appelle d’abord `users.messages.list` pour l’utilisateur `me`, avec la requête `in:anywhere`. La taille de page vaut 20 par défaut et est bornée entre 1 et 50. Pour chaque référence obtenue, un appel `users.messages.get` récupère seulement `From`, `Subject`, `Date`, `List-Unsubscribe` et `List-Unsubscribe-Post`. Les appels de détail sont effectués en parallèle avec `Promise.all`.
 
 Le frontend reçoit uniquement :
 

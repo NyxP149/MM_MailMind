@@ -39,6 +39,7 @@ import { AgentControl } from './components/AgentControl.jsx';
 import { IsolationVault } from './components/IsolationVault.jsx';
 import { applyClassificationOverrides, applyCustomRules, applyLearnedPreferences, createLearningExample, mergeEmails, readLocalMap, upsertLearningExample } from './classification.js';
 import { resolveTheme, THEME_KEY } from './theme.js';
+import { launchUnsubscribe, validateUnsubscribe } from './unsubscribe.js';
 
 const OVERRIDES_KEY = 'mailmind:classification-overrides:v1';
 const DECISIONS_KEY = 'mailmind:quarantine-decisions:v1';
@@ -236,6 +237,7 @@ export default function App() {
     if (activeView === 'categories' && selectedCategory) return email.classification?.id === selectedCategory;
     return true;
   });
+  const unsubscribeCount = visibleEmails.filter((email) => email.unsubscribe?.available).length;
 
   const viewCopy = {
     inbox: { eyebrow: 'Boîte de réception', title: 'Bonjour 👋', description: 'Voici les derniers messages de votre boîte Gmail.', panel: 'Messages récents' },
@@ -417,6 +419,38 @@ export default function App() {
     }
   };
 
+  const unsubscribeEmail = (email) => {
+    const unsubscribe = validateUnsubscribe(email.unsubscribe);
+    if (!unsubscribe) {
+      setError('Cet expéditeur ne fournit pas de mécanisme de désabonnement sûr et compatible.');
+      return;
+    }
+    const risky = ['spam', 'arnaque', 'adultes', 'rencontres'].includes(email.classification?.id);
+    const destination = unsubscribe.host || unsubscribe.address;
+    const method = unsubscribe.method === 'one-click'
+      ? 'une requête de désabonnement one-click sera envoyée'
+      : unsubscribe.method === 'web'
+        ? 'la page de désabonnement sera ouverte'
+        : 'votre application de messagerie préparera un e-mail de désabonnement';
+    const warning = risky
+      ? '\n\nAttention : ce message est classé à risque. Se désabonner peut confirmer que votre adresse est active. Le signalement comme Spam est généralement plus sûr.'
+      : '\n\nContinuez uniquement si vous reconnaissez cet expéditeur. Pour un spam ou une arnaque, utilisez plutôt le signalement Spam.';
+    if (!window.confirm(`Se désabonner de « ${email.from.name} » ?\n\nDestination externe : ${destination}\n${method}. MailMind ne peut pas garantir le traitement par l’expéditeur.${warning}`)) return;
+
+    try {
+      const launched = launchUnsubscribe(unsubscribe);
+      setActionHistory((current) => {
+        const next = [{ action: `unsubscribe-${launched}`, at: new Date().toISOString(), category: email.classification?.id || 'autre', categoryLabel: email.classification?.label || 'Autre' }, ...current].slice(0, 100);
+        localStorage.setItem(ACTION_HISTORY_KEY, JSON.stringify(next));
+        return next;
+      });
+      setError('');
+      setScanNotice(launched === 'one-click' ? 'Demande de désabonnement transmise au service indiqué par l’expéditeur.' : launched === 'web' ? 'Page de désabonnement ouverte : terminez la procédure sur le site externe.' : 'E-mail de désabonnement préparé : vérifiez-le avant de l’envoyer.');
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const trashAllIsolation = async () => {
     const count = Number(isolation.total || 0);
     if (!count) return;
@@ -491,7 +525,7 @@ export default function App() {
           <button className={activeView === 'agent' ? 'nav-item active' : 'nav-item'} onClick={() => changeView('agent')}><Bot size={19} /> Agent contrôlé <span className="v7-badge">V7</span></button>
         </nav>
         <div className="sidebar-footer">
-          <div className="privacy-card"><ShieldCheck size={20} /><div><strong>Vos données restent privées</strong><span>{status.deployment?.persistence ? 'Jetons chiffrés · Sas contrôlé V9' : 'Actions Gmail manuelles'}</span></div></div>
+          <div className="privacy-card"><ShieldCheck size={20} /><div><strong>Vos données restent privées</strong><span>{status.deployment?.persistence ? 'Jetons chiffrés · Contrôles V10' : 'Actions Gmail manuelles'}</span></div></div>
           <button className="account-button"><span>{status.profile?.email?.[0]?.toUpperCase()}</span><div><strong>{status.profile?.email?.split('@')[0]}</strong><small>{status.profile?.email}</small></div><ChevronDown size={16} /></button>
           <button className="logout-button" onClick={logout}><LogOut size={16} /> Déconnecter Gmail</button>
           <div className="powered-by">Powered by <strong>JarVyX</strong></div>
@@ -529,7 +563,7 @@ export default function App() {
             <ClassificationOverview emails={effectiveEmails} selectedCategory={selectedCategory} onSelectCategory={setSelectedCategory} decisions={decisions} />
           )}
           {activeView === 'vault' ? (
-            <IsolationVault data={isolation} loading={isolationLoading} busyId={gmailBusyId} bulkBusy={isolationBulkBusy} onRefresh={() => loadIsolation()} onLoadMore={() => loadIsolation(isolation.nextPageToken)} onAction={applyIsolationAction} onTrashAll={trashAllIsolation} />
+            <IsolationVault data={isolation} loading={isolationLoading} busyId={gmailBusyId} bulkBusy={isolationBulkBusy} onRefresh={() => loadIsolation()} onLoadMore={() => loadIsolation(isolation.nextPageToken)} onAction={applyIsolationAction} onTrashAll={trashAllIsolation} onUnsubscribe={unsubscribeEmail} />
           ) : activeView === 'learning' && !loading ? (
             <LearningDashboard examples={learningExamples} onReset={resetLearning} />
           ) : activeView === 'agent' && !loading ? (
@@ -544,12 +578,12 @@ export default function App() {
             <QualityDashboard emails={effectiveEmails} rawEmails={emails} decisions={decisions} overrides={classificationOverrides} />
           ) : (
             <section className="mail-panel">
-              <div className="panel-head"><div><h2>{viewCopy.panel}</h2><span>{visibleEmails.length} affichés</span></div><span className="safe-badge"><ShieldCheck size={15} /> Aucune suppression définitive</span></div>
-              {loading ? <SkeletonRows /> : visibleEmails.length ? <div className="email-list">{visibleEmails.map((email, index) => <EmailRow key={email.id} email={email} index={index} editable={activeView !== 'inbox'} decision={decisions[email.id]} onCategoryChange={updateCategory} onDecision={activeView === 'quarantine' ? updateDecision : undefined} onGmailAction={activeView === 'quarantine' ? applyGmailAction : undefined} gmailBusy={gmailBusyId === email.id} />)}</div> : <EmptyState />}
+              <div className="panel-head"><div><h2>{viewCopy.panel}</h2><span>{visibleEmails.length} affichés · {unsubscribeCount} désabonnement(s)</span></div><span className="safe-badge"><ShieldCheck size={15} /> Confirmation manuelle</span></div>
+              {loading ? <SkeletonRows /> : visibleEmails.length ? <div className="email-list">{visibleEmails.map((email, index) => <EmailRow key={email.id} email={email} index={index} editable={activeView !== 'inbox'} decision={decisions[email.id]} onCategoryChange={updateCategory} onDecision={activeView === 'quarantine' ? updateDecision : undefined} onGmailAction={activeView === 'quarantine' ? applyGmailAction : undefined} onUnsubscribe={unsubscribeEmail} gmailBusy={gmailBusyId === email.id} />)}</div> : <EmptyState />}
               {nextPageToken && !query && <div className="load-more"><button onClick={() => loadEmails(nextPageToken)} disabled={loadingMore}>{loadingMore ? 'Chargement…' : 'Afficher plus de messages'}</button></div>}
             </section>
           )}
-          <p className="v1-note"><ShieldCheck size={15} /> {activeView === 'assistant' ? 'Version 5 — L’IA conseille uniquement après votre consentement. Aucune action Gmail.' : activeView === 'learning' ? 'Version 6 — L’apprentissage reste local, explicable et réversible. Aucune action Gmail.' : activeView === 'agent' ? 'Version 7 — Seuls les labels explicitement autorisés sont appliqués. Aucune suppression.' : activeView === 'vault' ? 'Version 9 — Isolation, Spam et corbeille exigent toujours votre confirmation. Aucune suppression définitive.' : 'Version 9 — Gmail ne change qu’après votre confirmation explicite. Aucune suppression définitive.'}</p>
+          <p className="v1-note"><ShieldCheck size={15} /> {activeView === 'assistant' ? 'Version 5 — L’IA conseille uniquement après votre consentement. Aucune action Gmail.' : activeView === 'learning' ? 'Version 6 — L’apprentissage reste local, explicable et réversible. Aucune action Gmail.' : activeView === 'agent' ? 'Version 7 — Seuls les labels explicitement autorisés sont appliqués. Aucune suppression.' : activeView === 'vault' ? 'Version 10 — Nettoyage et désabonnement exigent toujours votre confirmation. Aucune suppression définitive.' : 'Version 10 — Les désabonnements utilisent uniquement les mécanismes déclarés par l’expéditeur et restent manuels.'}</p>
         </main>
       </div>
       {sidebarOpen && <button className="sidebar-scrim" onClick={() => setSidebarOpen(false)} aria-label="Fermer le menu" />}

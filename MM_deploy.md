@@ -14,6 +14,8 @@
 
 > Mise à jour V9 : sas Gmail manuel `MailMind/À supprimer`, sans nouveau service ni nouveau scope OAuth.
 
+> Mise à jour V10 : désabonnement contrôlé depuis les métadonnées Gmail, sans secret ni service backend supplémentaire.
+
 ## Statut actuel et périmètre
 
 > **La V8 peut être publiée derrière Cloudflare Tunnel et Cloudflare Access pour un usage personnel privé. Elle ne doit pas être ouverte librement à plusieurs utilisateurs.**
@@ -135,6 +137,12 @@ Le classificateur V2 s’exécute sans service d’IA externe. Les recommandatio
 Après la mise à jour, ouvrez **Sas de nettoyage** une première fois : le backend crée le label Gmail ou renomme l’ancien. Dans Gmail, le label apparaît dans la colonne de gauche sous `MailMind/À supprimer` et peut être consulté ou vidé manuellement.
 
 Le seuil de 300 est informatif et ne nécessite aucun ordonnanceur supplémentaire. Le bouton de vidage déplace les messages vers la corbeille Gmail après saisie de la phrase exacte ; il ne les supprime pas définitivement. Pour un contrôle après déploiement, vérifiez le compteur, ouvrez le lien Gmail et testez d’abord isolation puis restauration sur un message sans importance. Ne testez Spam ou Corbeille qu’avec un message que vous acceptez de déplacer.
+
+### Exploitation du désabonnement V10
+
+La V10 ne demande aucun scope OAuth, variable d’environnement, conteneur ou accès sortant supplémentaire au backend. Le navigateur contacte la destination HTTPS déclarée seulement après confirmation. Un bloqueur de fenêtres ou une politique d’entreprise peut empêcher l’ouverture ; dans ce cas, autorisez ponctuellement les fenêtres pour MailMind ou utilisez directement le lien de désabonnement dans Gmail.
+
+Testez d’abord avec une newsletter légitime que vous reconnaissez. Vérifiez le domaine présenté dans la confirmation. Pour un expéditeur inconnu, un spam ou une arnaque, utilisez plutôt le signalement Spam : une requête de désabonnement peut informer l’expéditeur que l’adresse est active. Le résultat final dépend du service tiers et ne peut pas être confirmé par MailMind.
 
 Les validations V2 sont actuellement conservées dans `localStorage`. Elles survivent aux rechargements et redémarrages locaux, mais pas à l’effacement des données du site, au changement de navigateur ou d’origine. Un déploiement multi-appareil devra les déplacer vers un stockage serveur authentifié, isolé par utilisateur, avec chiffrement et politique de rétention.
 

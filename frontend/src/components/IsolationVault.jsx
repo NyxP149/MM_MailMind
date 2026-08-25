@@ -1,9 +1,9 @@
-import { ExternalLink, Inbox, LoaderCircle, RefreshCw, ShieldAlert, Siren, Trash2, Undo2 } from 'lucide-react';
+import { BellOff, ExternalLink, Inbox, LoaderCircle, RefreshCw, ShieldAlert, Siren, Trash2, Undo2 } from 'lucide-react';
 import { formatEmailDate, initials } from '../utils.js';
 
 const colors = ['violet', 'lime', 'amber', 'blue', 'rose'];
 
-export function IsolationVault({ data, loading, busyId, bulkBusy, onRefresh, onLoadMore, onAction, onTrashAll }) {
+export function IsolationVault({ data, loading, busyId, bulkBusy, onRefresh, onLoadMore, onAction, onTrashAll, onUnsubscribe }) {
   const total = Number(data?.total || 0);
   const threshold = Number(data?.alertThreshold || 300);
   const gmailUrl = `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(`label:"${data?.label || 'MailMind/À supprimer'}"`)}`;
@@ -47,6 +47,7 @@ export function IsolationVault({ data, loading, busyId, bulkBusy, onRefresh, onL
                 <div className="email-content"><div className="email-subject-line"><strong>{email.subject}</strong>{email.classification && <span className={`classification-badge category-${email.classification.id}`}>{email.classification.label} · {Math.round(email.classification.confidence * 100)}%</span>}</div><p>{email.snippet || 'Aucun aperçu disponible'}</p></div>
                 <time dateTime={email.date}>{formatEmailDate(email.date)}</time>
                 <div className="isolation-actions">
+                  {email.unsubscribe?.available && <button className="isolation-unsubscribe" onClick={() => onUnsubscribe?.(email)} disabled={Boolean(busyId)}><BellOff size={14} /> Désabonner</button>}
                   <button className="isolation-restore" onClick={() => onAction(email, 'restore')} disabled={Boolean(busyId)}><Undo2 size={14} /> Restaurer</button>
                   <button className="isolation-spam" onClick={() => onAction(email, 'spam')} disabled={Boolean(busyId)}><Siren size={14} /> Spam</button>
                   <button className="isolation-trash" onClick={() => onAction(email, 'trash')} disabled={Boolean(busyId)}>{busyId === email.id ? <LoaderCircle className="spin" size={14} /> : <Trash2 size={14} />} Corbeille</button>

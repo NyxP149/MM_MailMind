@@ -13,6 +13,8 @@
 
 > Mise à jour V9 : sas Gmail visible, actions de nettoyage exclusivement manuelles et absence de suppression définitive.
 
+> Mise à jour V10 : désabonnement à la demande depuis les en-têtes standards, sans lecture des liens du corps.
+
 ## 1. Objet du document
 
 Ce document décrit la conception fonctionnelle et technique de MailMind. Il distingue l'état réellement implémenté dans la V1 des orientations prévues par la feuille de route.
@@ -136,6 +138,16 @@ Deux niveaux d’action restent volontairement séparés. L’agent contrôlé V
 Chaque mutation V9 exige une confirmation dans l’interface et un en-tête de consentement exact vérifié par le backend. Spam et Corbeille refusent tout message qui ne possède pas le label d’isolement. Le vidage groupé exige la saisie `CORBEILLE N` et le backend vérifie que `N` correspond encore au nombre réel de messages avant d’agir. Le lot est limité à 500 messages et son exécution est bornée en concurrence.
 
 Le seuil de 300 produit une alerte visuelle ; il ne lance aucune action. MailMind ne propose aucune suppression définitive : la corbeille Gmail demeure la dernière étape récupérable. Les rapports et journaux ne stockent que le type d’action et des compteurs, jamais le contenu des messages.
+
+## Désabonnement contrôlé V10
+
+La V10 ne tente pas de deviner un lien dans le HTML ou le texte d’un e-mail. Elle demande à Gmail uniquement `List-Unsubscribe` et `List-Unsubscribe-Post`, puis réduit ces en-têtes à une instruction structurée. Une absence ou une valeur invalide produit simplement `available: false`.
+
+L’ordre de préférence est : requête HTTPS one-click conforme, page HTTPS de désabonnement, puis message `mailto:` préparé dans l’application de messagerie. Les URL HTTP, les URL comportant des identifiants, les ports non standards, les protocoles actifs et les valeurs trop longues sont rejetés. Le domaine externe ou l’adresse e-mail est toujours affiché avant confirmation.
+
+Le backend ne contacte jamais la destination de désabonnement. Pour le one-click, le navigateur crée après consentement un formulaire POST éphémère contenant `List-Unsubscribe=One-Click`. Cette séparation évite le SSRF et empêche un e-mail de faire utiliser l’infrastructure MailMind comme relais. Une page web ou un brouillon `mailto:` reste sous le contrôle visible de l’utilisateur.
+
+Un désabonnement n’est pas une preuve que l’expéditeur est légitime. Pour les catégories Spam, Arnaque, Adultes et Rencontres, MailMind avertit que la requête peut confirmer l’activité de l’adresse. Aucune action en lot, automatique ou déclenchée par l’agent V7 n’est autorisée en V10.
 
 La reprise après redémarrage repose sur deux enveloppes AES-256-GCM : les identifiants OAuth d’un côté et l’état de l’ordonnanceur de l’autre. Une clé de déploiement d’au moins 32 caractères est dérivée en clé de chiffrement de 256 bits ; chaque écriture utilise un IV aléatoire et un tag d’authentification. Les fichiers sont écrits sur un volume Docker avec remplacement atomique et ne contiennent jamais de clair. La déconnexion révoque les identifiants puis efface les deux enveloppes.
 

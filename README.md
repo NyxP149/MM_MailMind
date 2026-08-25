@@ -37,6 +37,16 @@ MailMind est une application web personnelle qui connecte Gmail à une interface
 - vidage du sas vers la corbeille seulement après saisie de `CORBEILLE N`, avec vérification serveur du nombre exact ;
 - aucune suppression définitive et aucune action automatique vers Spam ou Corbeille.
 
+### V10 — Désabonnement contrôlé
+
+- détection des en-têtes standards `List-Unsubscribe` et `List-Unsubscribe-Post` dans les métadonnées Gmail ;
+- bouton **Désabonner** uniquement lorsqu’un expéditeur déclare une méthode compatible ;
+- priorité au désabonnement HTTPS one-click, puis à une page HTTPS, puis à un e-mail `mailto:` ;
+- affichage du domaine ou de l’adresse destinataire avant chaque consentement ;
+- refus des liens HTTP, des identifiants intégrés aux URL, des ports HTTPS non standards et des protocoles actifs ;
+- avertissement renforcé pour Spam, Arnaque, Adultes et Rencontres : signaler comme Spam est souvent plus sûr que confirmer une adresse active ;
+- aucune exploration des liens présents dans le corps de l’e-mail et aucun désabonnement automatique en lot.
+
 ### V3 — Tableau de bord local
 
 - synthèse du volume chargé et des validations ;
@@ -201,7 +211,7 @@ Les appels Gmail passent exclusivement par le backend. Le frontend ne reçoit ja
 
 ## Roadmap
 
-Les versions V1 à V9 sont disponibles : Gmail, classification prudente, dashboard, règles personnalisées, assistant IA locale à la demande, apprentissage, agent autonome contrôlé, déploiement privé chiffré et sas de nettoyage manuel. La suppression définitive reste désactivée.
+Les versions V1 à V10 sont disponibles : Gmail, classification prudente, dashboard, règles personnalisées, assistant IA locale à la demande, apprentissage, agent autonome contrôlé, déploiement privé chiffré, sas de nettoyage manuel et désabonnement contrôlé. La suppression définitive reste désactivée.
 
 ## Agent contrôlé V7
 
