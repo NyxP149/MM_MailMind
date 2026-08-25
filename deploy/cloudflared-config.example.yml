@@ -1,0 +1,7 @@
+tunnel: remplacez-par-identifiant-du-tunnel
+credentials-file: 'C:\Users\VOTRE_NOM\.cloudflared\remplacez-par-identifiant-du-tunnel.json'
+
+ingress:
+  - hostname: mailmind.example.com
+    service: http://localhost:8080
+  - service: http_status:404

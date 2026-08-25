@@ -418,7 +418,7 @@ export default function App() {
           <button className={activeView === 'agent' ? 'nav-item active' : 'nav-item'} onClick={() => changeView('agent')}><Bot size={19} /> Agent contrôlé <span className="v7-badge">V7</span></button>
         </nav>
         <div className="sidebar-footer">
-          <div className="privacy-card"><ShieldCheck size={20} /><div><strong>Vos données restent privées</strong><span>Labels réversibles via Google</span></div></div>
+          <div className="privacy-card"><ShieldCheck size={20} /><div><strong>Vos données restent privées</strong><span>{status.deployment?.persistence ? 'Jetons chiffrés · Déploiement privé V8' : 'Labels réversibles via Google'}</span></div></div>
           <button className="account-button"><span>{status.profile?.email?.[0]?.toUpperCase()}</span><div><strong>{status.profile?.email?.split('@')[0]}</strong><small>{status.profile?.email}</small></div><ChevronDown size={16} /></button>
           <button className="logout-button" onClick={logout}><LogOut size={16} /> Déconnecter Gmail</button>
           <div className="powered-by">Powered by <strong>JarVyX</strong></div>

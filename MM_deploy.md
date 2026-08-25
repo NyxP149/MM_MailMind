@@ -10,11 +10,109 @@
 
 > Mise à jour V6 : l'apprentissage fonctionne localement sans service ni base supplémentaire.
 
+> Mise à jour V8 : déploiement Docker privé, accès par tunnel et persistance chiffrée.
+
 ## Statut actuel et périmètre
 
-> **La V1 actuelle est conçue pour un usage personnel et local. Elle ne doit pas être exposée telle quelle sur Internet ni ouverte à plusieurs utilisateurs.**
+> **La V8 peut être publiée derrière Cloudflare Tunnel et Cloudflare Access pour un usage personnel privé. Elle ne doit pas être ouverte librement à plusieurs utilisateurs.**
 
-Le frontend est une application React/Vite installable comme PWA. Le backend est une API Express qui réalise le flux Google OAuth 2.0 et appelle Gmail avec `gmail.modify`. Aujourd'hui, un unique client OAuth et ses jetons sont conservés en mémoire dans le processus Node.js : un redémarrage déconnecte Gmail, et plusieurs visiteurs partageraient le même état d'authentification. Cette architecture est acceptable pour une exécution locale personnelle, pas pour un service public.
+Le frontend est une application React/Vite installable comme PWA. Le backend est une API Express qui réalise le flux Google OAuth 2.0 et appelle Gmail avec `gmail.modify`. Un unique client OAuth reste partagé par le processus Node.js. En V8, ses jetons peuvent être conservés dans une enveloppe chiffrée sur volume persistant, mais plusieurs visiteurs partageraient toujours le même état Gmail. Cette architecture convient à un service privé protégé par identité, pas à un service public.
+
+## Déploiement privé V8 — procédure recommandée
+
+### Prérequis
+
+- Docker Desktop avec Docker Compose ;
+- un domaine géré dans Cloudflare ;
+- `cloudflared` installé sur la machine qui exécute MailMind ;
+- Ollama démarré sur cette machine si l’IA locale doit rester active ;
+- le projet Google Cloud et le compte Gmail déjà utilisés en local.
+
+### 1. Générer la configuration privée
+
+Depuis la racine du dépôt :
+
+```powershell
+.\deploy\initialize-deployment.ps1 -PublicUrl https://mailmind.votre-domaine.com
+```
+
+Le script crée `.env.deploy`, génère `COOKIE_SECRET` et `DATA_ENCRYPTION_KEY`, puis refuse d’écraser un fichier existant. Ouvrez ce fichier et remplacez uniquement les valeurs Google :
+
+```dotenv
+GOOGLE_CLIENT_ID=votre-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=votre-secret-client
+```
+
+Ne commitez, ne transmettez et ne capturez jamais `.env.deploy`. Sauvegardez-le dans un gestionnaire de mots de passe : sans `DATA_ENCRYPTION_KEY`, les jetons chiffrés du volume sont irrécupérables.
+
+### 2. Mettre à jour Google OAuth
+
+Dans le client OAuth de type **Application Web**, ajoutez exactement :
+
+```text
+Origine JavaScript autorisée : https://mailmind.votre-domaine.com
+URI de redirection autorisée  : https://mailmind.votre-domaine.com/api/auth/google/callback
+```
+
+Gardez également les valeurs localhost pour le développement. Tant que le projet Google reste en mode test, conservez votre adresse Gmail dans **Utilisateurs tests**.
+
+### 3. Construire et démarrer MailMind
+
+```powershell
+.\deploy\mailmind.ps1 config
+.\deploy\mailmind.ps1 up
+.\deploy\mailmind.ps1 status
+```
+
+Vérifiez localement `http://localhost:8080` et `http://localhost:8080/api/health`. La santé doit afficher `persistenceReady: true`. Le port Docker est lié à `127.0.0.1` : il n’est pas publié sur le réseau local. `down` arrête les conteneurs sans supprimer le volume ; n’utilisez pas `docker compose down -v` sauf si vous voulez effacer les jetons et l’état planifié.
+
+### 4. Créer le tunnel Cloudflare
+
+```powershell
+cloudflared tunnel login
+cloudflared tunnel create mailmind
+cloudflared tunnel route dns mailmind mailmind.votre-domaine.com
+```
+
+Copiez `deploy/cloudflared-config.example.yml` vers le fichier de configuration `cloudflared`, puis remplacez l’identifiant, le chemin du fichier d’identifiants et le domaine. Le service cible doit rester `http://localhost:8080`. Démarrez ensuite :
+
+```powershell
+cloudflared tunnel run mailmind
+```
+
+Après validation en mode interactif, installez `cloudflared` comme service Windows pour un fonctionnement permanent.
+
+Référence officielle : [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/).
+
+### 5. Protéger obligatoirement le domaine
+
+Dans Cloudflare Zero Trust, créez une application **Access > Applications > Self-hosted** pour `mailmind.votre-domaine.com`. Ajoutez une politique **Allow** limitée à votre adresse e-mail et refusez tout autre visiteur. Testez dans une fenêtre privée : Cloudflare Access doit apparaître avant MailMind.
+
+Cloudflare Access protège l’entrée, mais Google OAuth reste l’autorisation Gmail. Une fois Access validé, ouvrez le domaine public, reconnectez Google une fois et vérifiez que la carte latérale indique **Jetons chiffrés · Déploiement privé V8**.
+
+Références officielles : [applications auto-hébergées Cloudflare Access](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/) et [règles OAuth Google](https://developers.google.com/identity/protocols/oauth2/web-server).
+
+### 6. Ollama depuis Docker
+
+Le backend utilise `http://host.docker.internal:11434`. Gardez Ollama démarré et testez une analyse. N’exposez jamais le port 11434 au tunnel ou à Internet. Si Docker ne peut pas joindre Ollama, désactivez temporairement l’assistant avec `AI_PROVIDER=openai` et une clé vide, ou configurez explicitement Ollama pour accepter uniquement les connexions nécessaires depuis Docker en conservant le pare-feu actif.
+
+### Exploitation et mises à jour
+
+```powershell
+git pull
+.\deploy\mailmind.ps1 up
+.\deploy\mailmind.ps1 logs
+```
+
+La reconstruction conserve le volume `mailmind-data`. Après chaque mise à jour, vérifiez `/api/health`, la connexion Gmail, une simulation V7.1, le thème et le service worker. Le script `mailmind.ps1` ne contient volontairement aucune commande de suppression du volume.
+
+### Sauvegarde et récupération
+
+- sauvegarder `.env.deploy` séparément et de façon chiffrée ;
+- sauvegarder le volume Docker uniquement si la reprise sans reconnexion est importante ;
+- ne jamais restaurer le volume sans la même `DATA_ENCRYPTION_KEY` ;
+- utiliser **Déconnecter Gmail** avant d’abandonner une installation afin de révoquer et effacer les jetons ;
+- si la clé est perdue, supprimer explicitement le volume, générer une nouvelle configuration et reconnecter Google.
 
 Le classificateur V2 s’exécute sans service d’IA externe. Les recommandations seules ne modifient pas Gmail. Après double validation, le backend ajoute ou retire exclusivement `MailMind/Quarantine`. Le changement de scope impose une nouvelle autorisation Google. Un journal d’audit en mémoire conserve les 100 dernières actions sans contenu d’e-mail.
 
@@ -98,7 +196,7 @@ L’agent V7 s’exécute uniquement lorsque MailMind et le backend sont actifs.
 
 Les 30 derniers rapports sont stockés dans le `localStorage` du navigateur sous `mailmind:agent-reports:v1`. Ils ne contiennent pas de contenu d’e-mail, mais doivent tout de même être considérés comme des données locales d’audit. Effacer les données du site supprime ces rapports. L’export JSON est volontairement minimisé.
 
-La V7.1 propose une simulation quotidienne côté backend. Elle peut fonctionner navigateur fermé, mais uniquement tant que le processus backend reste actif et que sa connexion OAuth en mémoire est valide. Elle n’exécute aucune action Gmail. La configuration et les 20 rapports planifiés sont volatils : redémarrer le backend ou se déconnecter les efface. Pour vérifier le fonctionnement local, garder `npm run dev` ouvert, activer l’horaire dans **Agent contrôlé**, puis utiliser d’abord **Simuler maintenant**.
+La V7.1 propose une simulation quotidienne côté backend. Elle peut fonctionner navigateur fermé et n’exécute aucune action Gmail. En développement sans V8, la configuration et les 20 rapports planifiés sont volatils. Avec le volume chiffré V8, ils survivent au redémarrage ; la déconnexion les efface volontairement. Utilisez d’abord **Simuler maintenant** pour valider la politique.
 
 Ne pas considérer cette fonction comme un ordonnanceur de production. Avant toute persistance ou exécution réelle planifiée, ajouter : stockage chiffré des jetons OAuth, séparation des utilisateurs, base durable, ordonnanceur avec verrou distribué ou transactionnel, politique de reprise, rétention d’audit définie et mécanisme explicite de révocation.
 
@@ -124,12 +222,15 @@ Dans Google Cloud, l'URI de redirection autorisée doit correspondre **exactemen
 | `OLLAMA_MODEL` | non | modèle local, `qwen3:4b` par défaut |
 | `OPENAI_API_KEY` | avec `AI_PROVIDER=openai` | secret exclusivement serveur |
 | `OPENAI_MODEL` | non | modèle OpenAI, `gpt-5.4-nano` par défaut |
+| `DATA_ENCRYPTION_KEY` | V8 | secret d’au moins 32 caractères ; chiffre les jetons et l’état agent |
+| `TOKEN_STORE_PATH` | V8 | chemin persistant de l’enveloppe OAuth, `/data/oauth.enc` dans Docker |
+| `AGENT_STATE_PATH` | V8 | chemin persistant de l’état agent, `/data/agent-state.enc` dans Docker |
 
 ### Frontend
 
 | Variable | Obligatoire | Usage |
 | --- | --- | --- |
-| `VITE_API_URL` | oui au build de production | URL publique du backend, intégrée au bundle Vite |
+| `VITE_API_URL` | non avec le proxy V8 | URL publique du backend séparé ; sinon l’origine courante est utilisée |
 
 Toute variable préfixée `VITE_` est visible par le navigateur. Aucun secret ne doit donc être placé dans la configuration frontend. En production, stocker les secrets backend dans le gestionnaire de secrets de l'hébergeur, avec accès limité au service API. Prévoir une procédure de rotation de `GOOGLE_CLIENT_SECRET`, `COOKIE_SECRET` et de la clé de chiffrement des jetons. Ne jamais écrire leur valeur dans les logs.
 
@@ -210,9 +311,9 @@ Le schéma, le domaine, le port, le chemin et la casse du callback doivent corre
 - Pour une session authentifiée par cookie, ajouter une protection CSRF sur les routes mutatives, une durée de vie courte, une rotation d'identifiant après connexion et une invalidation côté serveur à la déconnexion.
 - Définir des en-têtes de sécurité adaptés, une CSP testée, une limite de taille des requêtes et une limitation de débit sur l'authentification et l'API.
 
-## Persistance chiffrée des jetons — requise avant production publique
+## Persistance chiffrée et isolation — requises avant production publique
 
-L'état actuel repose sur un seul objet OAuth en mémoire. Il faut le remplacer avant toute ouverture multi-utilisateur :
+La V8 chiffre durablement l’unique objet OAuth d’une installation privée. Il faut encore remplacer ce modèle global avant toute ouverture multi-utilisateur :
 
 1. créer une identité applicative et une session serveur propres à chaque utilisateur ;
 2. stocker les jetons par utilisateur dans une base durable, sans jamais les envoyer au frontend ;
@@ -273,7 +374,7 @@ La publication doit rester bloquée tant que les points structurants suivants ne
 | `redirect_uri_mismatch` chez Google | comparer caractère par caractère `GOOGLE_REDIRECT_URI` et l'URI autorisée dans Google Cloud |
 | retour `invalid_state` | vérifier que le cookie OAuth est reçu au callback, que `COOKIE_SECRET` est stable entre instances et que `Secure`/`SameSite` correspondent au contexte HTTPS |
 | erreur CORS dans le navigateur | vérifier `FRONTEND_URL`, le schéma/port exacts, puis la présence de `credentials: true` des deux côtés si des cookies applicatifs sont utilisés |
-| connexion perdue après redémarrage | comportement attendu de la V1 en mémoire ; implémenter la persistance chiffrée avant production |
+| connexion perdue après redémarrage | vérifier `persistenceReady`, le volume `mailmind-data`, les trois variables V8 et la stabilité de `DATA_ENCRYPTION_KEY` |
 | un seul compte semble partagé | limitation critique de l'architecture V1 ; ne pas ouvrir le service et ajouter l'isolation par utilisateur |
 | PWA non installable | vérifier HTTPS, manifeste, icône et service worker dans les outils développeur |
 | frontend mis à jour mais ancienne interface visible | vider/mettre à jour le service worker, contrôler les règles de cache et vérifier que `index.html` n'est pas mis en cache trop longtemps |

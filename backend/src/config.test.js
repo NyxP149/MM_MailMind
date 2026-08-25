@@ -15,3 +15,8 @@ test('getConfig exige une clé pour OpenAI', () => {
   assert.equal(getConfig({ AI_PROVIDER: 'openai' }).aiReady, false);
   assert.equal(getConfig({ AI_PROVIDER: 'openai', OPENAI_API_KEY: 'secret' }).aiReady, true);
 });
+
+test('getConfig active la persistance uniquement avec une configuration complète', () => {
+  assert.equal(getConfig({ DATA_ENCRYPTION_KEY: 'key', TOKEN_STORE_PATH: '/data/oauth.enc', AGENT_STATE_PATH: '/data/agent.enc' }).persistenceReady, false);
+  assert.equal(getConfig({ DATA_ENCRYPTION_KEY: 'une-cle-de-chiffrement-de-32-caracteres', TOKEN_STORE_PATH: '/data/oauth.enc', AGENT_STATE_PATH: '/data/agent.enc' }).persistenceReady, true);
+});

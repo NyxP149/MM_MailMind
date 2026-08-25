@@ -34,5 +34,9 @@ export function getConfig(env = process.env) {
     openaiModel,
     ollamaBaseUrl: (env.OLLAMA_BASE_URL || 'http://127.0.0.1:11434').replace(/\/+$/, ''),
     ollamaModel,
+    dataEncryptionKey: env.DATA_ENCRYPTION_KEY,
+    tokenStorePath: env.TOKEN_STORE_PATH,
+    agentStatePath: env.AGENT_STATE_PATH,
+    persistenceReady: Boolean(env.DATA_ENCRYPTION_KEY?.length >= 32 && env.TOKEN_STORE_PATH && env.AGENT_STATE_PATH),
   };
 }

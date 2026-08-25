@@ -13,11 +13,17 @@ import { isValidMessageId, quarantineMessage, restoreMessage } from './gmail-act
 import { AIServiceError, analyzeEmailWithAI } from './ai.js';
 import { createAIJobManager } from './ai-jobs.js';
 import { createAgentScheduler } from './agent-scheduler.js';
+import { createEncryptedStore } from './encrypted-store.js';
 
 const OAUTH_COOKIE = 'mailmind_oauth_state';
 
 function apiError(res, status, code, message) {
   return res.status(status).json({ error: { code, message } });
+}
+
+export function mutationOriginAllowed({ method, origin, frontendUrl, isProduction }) {
+  if (!isProduction || !['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) return true;
+  return origin === frontendUrl;
 }
 
 export function createApp(config) {
@@ -26,15 +32,31 @@ export function createApp(config) {
   let connected = false;
   const auditLog = [];
   const aiJobs = createAIJobManager();
+  const tokenStore = createEncryptedStore({ filePath: config.tokenStorePath, secret: config.dataEncryptionKey });
+  const agentStateStore = createEncryptedStore({ filePath: config.agentStatePath, secret: config.dataEncryptionKey });
+  const storedCredentials = tokenStore.load();
+  if (storedCredentials?.access_token || storedCredentials?.refresh_token) {
+    oauthClient.setCredentials(storedCredentials);
+    connected = true;
+  }
+  const persistTokens = (credentials) => {
+    try { tokenStore.save(credentials); }
+    catch (error) { console.warn(`Jetons OAuth non persistés : ${error.message}`); }
+  };
   const agentScheduler = createAgentScheduler({
     scan: async (maxMessages) => {
       if (!connected || !oauthClient.credentials.access_token) throw new Error('Gmail non connecté');
       return (await listMessages(oauthClient, { maxResults: maxMessages })).messages;
     },
+    initialState: agentStateStore.load(),
+    onStateChange: (state) => agentStateStore.save(state),
   });
 
   oauthClient.on('tokens', (tokens) => {
-    if (tokens.access_token || tokens.refresh_token) connected = true;
+    if (tokens.access_token || tokens.refresh_token) {
+      connected = true;
+      persistTokens({ ...oauthClient.credentials, ...tokens });
+    }
   });
 
   app.disable('x-powered-by');
@@ -47,12 +69,17 @@ export function createApp(config) {
   );
   app.use(express.json({ limit: '32kb' }));
   app.use(cookieParser(config.cookieSecret || 'mailmind-development-only'));
+  app.use((req, res, next) => {
+    if (mutationOriginAllowed({ method: req.method, origin: req.get('origin'), frontendUrl: config.frontendUrl, isProduction: config.isProduction })) return next();
+    return apiError(res, 403, 'UNTRUSTED_ORIGIN', 'Origine de la requête refusée.');
+  });
 
   app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', service: 'MailMind API', oauthReady: config.oauthReady, aiReady: config.aiReady, aiProvider: config.aiProvider });
+    res.json({ status: 'ok', service: 'MailMind API', oauthReady: config.oauthReady, aiReady: config.aiReady, aiProvider: config.aiProvider, persistenceReady: tokenStore.enabled && agentStateStore.enabled });
   });
 
   const aiStatus = () => ({ configured: config.aiReady, provider: config.aiProvider, model: config.aiModel });
+  const deploymentStatus = () => ({ mode: config.isProduction ? 'private' : 'local', persistence: tokenStore.enabled && agentStateStore.enabled });
 
   app.get('/api/auth/status', async (_req, res) => {
     if (!config.oauthReady) {
@@ -61,20 +88,20 @@ export function createApp(config) {
         configured: false,
         missing: config.missing,
         ai: aiStatus(),
+        deployment: deploymentStatus(),
       });
     }
 
     if (!connected || !oauthClient.credentials.access_token) {
-      return res.json({ connected: false, configured: true, ai: aiStatus() });
+      return res.json({ connected: false, configured: true, ai: aiStatus(), deployment: deploymentStatus() });
     }
 
     try {
       const profile = await getProfile(oauthClient);
-      return res.json({ connected: true, configured: true, accessMode: 'modify', profile, ai: aiStatus() });
-    } catch {
-      connected = false;
-      oauthClient.setCredentials({});
-      return res.json({ connected: false, configured: true, ai: aiStatus() });
+      return res.json({ connected: true, configured: true, accessMode: 'modify', profile, ai: aiStatus(), deployment: deploymentStatus() });
+    } catch (error) {
+      console.warn(`Profil Gmail momentanément indisponible : ${error.code || error.message}`);
+      return res.json({ connected: false, configured: true, ai: aiStatus(), deployment: deploymentStatus() });
     }
   });
 
@@ -116,6 +143,7 @@ export function createApp(config) {
     try {
       const { tokens } = await oauthClient.getToken(req.query.code);
       oauthClient.setCredentials(tokens);
+      persistTokens(tokens);
       connected = true;
       return res.redirect(`${config.frontendUrl}/?auth=success`);
     } catch (error) {
@@ -135,6 +163,8 @@ export function createApp(config) {
       connected = false;
       oauthClient.setCredentials({});
       agentScheduler.reset();
+      try { tokenStore.clear(); } catch (error) { console.warn(`Jetons persistés non effacés : ${error.message}`); }
+      try { agentStateStore.clear(); } catch (error) { console.warn(`État agent persistant non effacé : ${error.message}`); }
     }
     res.status(204).end();
   });

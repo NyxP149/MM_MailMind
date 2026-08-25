@@ -42,3 +42,18 @@ test('l’ordonnanceur rattrape l’horaire et efface sa mémoire à la déconne
   assert.equal(scheduler.status().enabled, false);
   assert.equal(scheduler.reports().length, 0);
 });
+
+test('l’ordonnanceur restaure et persiste son état V8', () => {
+  let persisted;
+  const scheduler = createAgentScheduler({
+    scan: async () => [],
+    intervalMs: 3_600_000,
+    initialState: { schedule: { enabled: true, time: '07:30', timeZone: 'Europe/Rome', categories: ['spam'] }, lastRunDate: '2026-08-24', reports: [] },
+    onStateChange: (state) => { persisted = state; },
+  });
+  assert.equal(scheduler.status().enabled, true);
+  assert.equal(scheduler.status().time, '07:30');
+  scheduler.disable();
+  assert.equal(persisted.schedule.enabled, false);
+  assert.equal(persisted.lastRunDate, '2026-08-24');
+});

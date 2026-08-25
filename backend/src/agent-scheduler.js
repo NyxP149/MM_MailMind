@@ -60,11 +60,18 @@ export function buildScheduledReport(messages, schedule, { id, startedAt, comple
   };
 }
 
-export function createAgentScheduler({ scan, now = () => new Date(), intervalMs = 30_000 } = {}) {
-  let schedule = normalizeSchedule();
-  let lastRunDate = null;
+export function createAgentScheduler({ scan, now = () => new Date(), intervalMs = 30_000, initialState, onStateChange = () => {} } = {}) {
+  let schedule = normalizeSchedule(initialState?.schedule);
+  let lastRunDate = typeof initialState?.lastRunDate === 'string' ? initialState.lastRunDate : null;
   let running = false;
-  const reports = [];
+  const reports = Array.isArray(initialState?.reports)
+    ? initialState.reports.filter((report) => report?.id && report?.mode === 'scheduled-simulation').slice(0, 20)
+    : [];
+
+  function persist() {
+    try { onStateChange({ schedule, lastRunDate, reports: [...reports] }); }
+    catch (error) { console.warn(`État planifié non persisté : ${error.message}`); }
+  }
 
   async function run() {
     if (running) return null;
@@ -80,6 +87,7 @@ export function createAgentScheduler({ scan, now = () => new Date(), intervalMs 
       });
       reports.unshift(report);
       reports.splice(20);
+      persist();
       return report;
     } finally {
       running = false;
@@ -93,6 +101,7 @@ export function createAgentScheduler({ scan, now = () => new Date(), intervalMs 
     try {
       await run();
       lastRunDate = parts.date;
+      persist();
     } catch (error) {
       console.error('Scheduled agent simulation failed:', error.message);
     }
@@ -106,12 +115,13 @@ export function createAgentScheduler({ scan, now = () => new Date(), intervalMs 
   }
 
   return {
-    configure(input) { schedule = normalizeSchedule(input); return status(); },
-    disable() { schedule = { ...schedule, enabled: false }; return status(); },
+    configure(input) { schedule = normalizeSchedule(input); persist(); return status(); },
+    disable() { schedule = { ...schedule, enabled: false }; persist(); return status(); },
     reset() {
       schedule = normalizeSchedule();
       lastRunDate = null;
       reports.length = 0;
+      persist();
       return status();
     },
     run,

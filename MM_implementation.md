@@ -10,7 +10,7 @@
 
 > Mise à jour V6 : moteur de préférences locales dérivé des corrections explicites.
 
-Ce document décrit l’implémentation actuellement présente dans le dépôt. Il sert de référence aux personnes qui développent, testent ou maintiennent MailMind. La version actuelle reste personnelle et locale ; elle lit Gmail et peut uniquement ajouter ou retirer son label de quarantaine après confirmation.
+Ce document décrit l’implémentation actuellement présente dans le dépôt. Il sert de référence aux personnes qui développent, testent ou maintiennent MailMind. La version actuelle reste personnelle et mono-utilisateur ; elle peut fonctionner localement ou derrière le déploiement privé V8.
 
 ## 1. Vue d’ensemble technique
 
@@ -19,7 +19,7 @@ MailMind est organisé en deux espaces npm :
 - `backend/` : API Node.js/Express, connexion Google OAuth 2.0 et appels à Gmail API ;
 - `frontend/` : application React construite avec Vite et rendue installable comme PWA.
 
-Le navigateur ne contacte jamais Gmail directement. Il appelle le backend, qui détient le client OAuth et transforme les réponses Gmail en objets minimaux adaptés à l’interface. Il n’existe actuellement ni base de données ni stockage persistant : les jetons OAuth et l’état de connexion vivent uniquement dans la mémoire du processus backend.
+Le navigateur ne contacte jamais Gmail directement. Il appelle le backend, qui détient le client OAuth et transforme les réponses Gmail en objets minimaux adaptés à l’interface. Sans configuration V8, les jetons restent en mémoire. Avec les trois variables de persistance, les jetons OAuth et l’état planifié sont chiffrés sur disque ; aucune base de données de contenu Gmail n’est créée.
 
 ## Implémentation de la classification V2
 
@@ -99,13 +99,23 @@ Les rapports sont stockés sous `mailmind:agent-reports:v1`, limités aux 30 plu
 
 ### Planification V7.1
 
-`backend/src/agent-scheduler.js` contient l’ordonnanceur quotidien en mémoire. `normalizeSchedule()` valide l’heure et le fuseau, borne le seuil entre 80 et 99 %, filtre les catégories autorisées et limite le lot à 50 messages. Le contrôle toutes les 30 secondes n’exécute qu’une fois la date locale prévue. `buildScheduledReport()` agrège uniquement les compteurs et catégories ; il fixe toujours `executed: 0` et ne conserve aucun identifiant ou contenu Gmail.
+`backend/src/agent-scheduler.js` contient l’ordonnanceur quotidien. `normalizeSchedule()` valide l’heure et le fuseau, borne le seuil entre 80 et 99 %, filtre les catégories autorisées et limite le lot à 50 messages. Le contrôle toutes les 30 secondes n’exécute qu’une fois la date locale prévue. `buildScheduledReport()` agrège uniquement les compteurs et catégories ; il fixe toujours `executed: 0` et ne conserve aucun identifiant ou contenu Gmail.
 
-Les routes `/api/agent/schedule` permettent de lire, activer ou désactiver l’horaire ; `/run` déclenche une simulation immédiate et `/reports` expose les 20 derniers rapports en mémoire. L’activation exige `X-MailMind-Agent-Consent: schedule-simulation`. `AgentControl.jsx` expose l’heure, la taille du lot et le fuseau local, puis rappelle explicitement que la tâche ne modifie pas Gmail. Une déconnexion désactive la planification ; un redémarrage efface la configuration et les rapports planifiés.
+Les routes `/api/agent/schedule` permettent de lire, activer ou désactiver l’horaire ; `/run` déclenche une simulation immédiate et `/reports` expose les 20 derniers rapports. L’activation exige `X-MailMind-Agent-Consent: schedule-simulation`. `AgentControl.jsx` expose l’heure, la taille du lot et le fuseau local, puis rappelle explicitement que la tâche ne modifie pas Gmail. Une déconnexion efface la planification ; un redémarrage la restaure uniquement lorsque V8 est active.
 
 ### Centre d’activité V7.2
 
 `buildAgentActivity()` fusionne les rapports conservés dans le navigateur et ceux de l’ordonnanceur backend. La fonction ignore les entrées incomplètes, déduplique par identifiant, trie par `completedAt` décroissant et calcule les volumes d’exécutions, messages analysés, simulations, lots contrôlés, actions et échecs. `AgentControl.jsx` affiche cette synthèse, quatre filtres et dix lignes au maximum. L’export global ajoute uniquement une version de format, sa date de génération, les métriques et les rapports minimisés existants.
+
+## Implémentation du déploiement privé V8
+
+`encrypted-store.js` fournit un stockage JSON synchrone chiffré et authentifié avec AES-256-GCM. Le secret de déploiement est transformé par SHA-256, un IV de 96 bits est généré à chaque sauvegarde et l’enveloppe versionnée contient uniquement IV, tag et ciphertext en base64. Une clé de moins de 32 caractères désactive le stockage. L’écriture passe par un fichier temporaire avant renommage.
+
+`app.js` restaure les identifiants OAuth au démarrage, conserve les nouveaux jetons émis lors d’un rafraîchissement et efface le stockage à la déconnexion. `agent-scheduler.js` accepte un état initial et un callback de persistance, ce qui restaure l’horaire, la dernière date exécutée et les 20 rapports planifiés. `/api/health` et `/api/auth/status` exposent seulement l’état booléen de la persistance, jamais les chemins, clés ou jetons.
+
+`compose.yaml` construit deux images : Node pour l’API et Nginx pour la PWA. Le backend est accessible uniquement au proxy sur le réseau Docker. Le port frontend est lié à `127.0.0.1`, les données chiffrées résident dans `mailmind-data` et les deux services possèdent un healthcheck. En production, `api.js` utilise l’origine courante lorsque `VITE_API_URL` est absent ; le développement conserve `http://localhost:3000`.
+
+En production, un middleware refuse également toute méthode mutative dont l’en-tête `Origin` ne correspond pas exactement à `FRONTEND_URL`. Cette défense complète CORS pour les routes de déconnexion, IA, planification et labels Gmail ; les lectures et le développement local restent inchangés.
 
 
 ```text
@@ -208,6 +218,9 @@ L’interface est disponible sur `http://localhost:5173` et le contrôle de sant
 | `FRONTEND_URL` | Non | Origine CORS et cible des redirections ; défaut : `http://localhost:5173`. |
 | `PORT` | Non | Port HTTP du backend ; défaut : `3000`. |
 | `NODE_ENV` | Non | La valeur `production` active l’attribut `secure` du cookie OAuth. |
+| `DATA_ENCRYPTION_KEY` | V8 | Secret d’au moins 32 caractères pour les enveloppes AES-256-GCM. |
+| `TOKEN_STORE_PATH` | V8 | Chemin du fichier chiffré contenant les jetons OAuth. |
+| `AGENT_STATE_PATH` | V8 | Chemin du fichier chiffré contenant l’état de planification. |
 
 Exemple de génération du secret :
 
@@ -221,7 +234,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 | Variable | Obligatoire | Valeur locale / rôle |
 | --- | --- | --- |
-| `VITE_API_URL` | Non | URL publique de l’API ; défaut : `http://localhost:3000`. |
+| `VITE_API_URL` | Non | URL de l’API ; défaut développement : `http://localhost:3000`, défaut production : origine courante. |
 
 Les variables préfixées par `VITE_` sont intégrées au bundle client : aucun secret ne doit y être placé.
 
@@ -248,7 +261,7 @@ Un seul objet `OAuth2` et un booléen `connected` sont créés dans la fermeture
 5. Il redirige vers Google avec `access_type=offline`, `prompt=consent` et l’unique scope `gmail.modify`.
 6. Google revient sur `GET /api/auth/google/callback`.
 7. Le backend efface le cookie puis compare le `state` reçu à sa valeur signée. Une différence entraîne une redirection frontend avec `?auth=invalid_state`.
-8. En présence d’un code, le backend l’échange contre des jetons et les place uniquement dans le client OAuth en mémoire.
+8. En présence d’un code, le backend l’échange contre des jetons, les place dans le client OAuth et les chiffre si la persistance V8 est active.
 9. Le navigateur est redirigé vers le frontend avec `?auth=success`, ou avec un code d’erreur exploité par `App.jsx`.
 
 Le client Google émet aussi un événement `tokens`; celui-ci maintient le drapeau de connexion lors de l’émission ou du renouvellement d’un jeton.
@@ -372,8 +385,8 @@ Il n’existe actuellement ni ESLint ni Prettier configuré. Ne lancez donc pas 
 ## 12. Limites techniques à connaître avant d’étendre l’application
 
 - La session OAuth est globale au processus : elle n’est pas multi-utilisateur.
-- Les jetons disparaissent à chaque redémarrage et ne sont pas partagés entre instances.
-- Il n’existe pas de session applicative persistante ni de base de données.
+- Sans V8, les jetons disparaissent à chaque redémarrage. Avec V8, ils persistent chiffrés mais restent globaux à une seule instance et un seul utilisateur.
+- Il n’existe pas de session applicative multi-utilisateur ni de base de données de contenu Gmail.
 - La recherche est locale et limitée aux pages déjà récupérées.
 - Chaque page peut provoquer jusqu’à 51 appels Gmail (une liste puis jusqu’à 50 détails), sans contrôle de concurrence ni reprise partielle.
 - L’API est conçue pour le développement local ; une mise en production exige notamment HTTPS, stockage chiffré des jetons, sessions par utilisateur, rotation des secrets, politique d’accès, supervision et stratégie de déploiement.

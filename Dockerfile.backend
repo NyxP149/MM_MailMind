@@ -1,0 +1,18 @@
+FROM node:22-alpine
+
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@10.15.1 --activate
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY backend/package.json backend/package.json
+COPY frontend/package.json frontend/package.json
+RUN pnpm install --filter @mailmind/backend --prod --frozen-lockfile
+
+COPY backend backend
+RUN mkdir -p /data && chown node:node /data
+
+ENV NODE_ENV=production
+ENV PORT=3000
+USER node
+EXPOSE 3000
+CMD ["node", "backend/server.js"]

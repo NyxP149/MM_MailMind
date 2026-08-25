@@ -117,9 +117,17 @@ Une exécution réelle nécessite l’activation du mode contrôlé, l’armemen
 
 Chaque lot produit un rapport local limité aux métriques, catégories, politique, état, erreurs et empreintes non réversibles. Aucun contenu, expéditeur ou identifiant Gmail n’est enregistré dans le rapport.
 
-La V7.1 ajoute une planification quotidienne en mémoire côté backend. Elle reprend uniquement le seuil, les catégories autorisées, l’heure, le fuseau et la taille du lot. Elle relit Gmail et génère une **simulation** anonymisée, mais n’appelle aucune route de mutation : les corrections humaines et règles personnalisées étant locales au navigateur, aucune action autonome ne serait suffisamment sûre. Cette tâche peut tourner navigateur fermé tant que le backend et la session OAuth en mémoire restent actifs. La configuration et les 20 rapports planifiés disparaissent au redémarrage ou à la déconnexion. Une planification durable demeure conditionnée à des jetons chiffrés, des sessions isolées et un ordonnanceur persistant.
+La V7.1 ajoute une planification quotidienne côté backend. Elle reprend uniquement le seuil, les catégories autorisées, l’heure, le fuseau et la taille du lot. Elle relit Gmail et génère une **simulation** anonymisée, mais n’appelle aucune route de mutation : les corrections humaines et règles personnalisées étant locales au navigateur, aucune action autonome ne serait suffisamment sûre. Cette tâche peut tourner navigateur fermé tant que le backend reste actif. Son état est volatil en local et chiffré sur volume avec V8 ; la déconnexion l’efface dans les deux modes.
 
 La V7.2 ajoute une vue d’audit unifiée sans créer une nouvelle source de données. Les rapports locaux et planifiés déjà minimisés sont dédupliqués, triés par date et agrégés en compteurs. L’utilisateur peut distinguer simulation manuelle, planifiée et lot contrôlé, puis exporter un élément ou le journal complet. Les filtres et l’agrégation restent purement locaux ; ils ne déclenchent aucune requête Gmail ni action.
+
+## Déploiement privé V8
+
+La V8 cible un seul utilisateur derrière un contrôle d’accès réseau. Elle ne transforme pas l’état OAuth global en modèle multi-utilisateur. Le point d’entrée unique est un proxy Nginx lié uniquement à l’interface locale de l’hôte. Il sert les ressources PWA et transmet `/api` au backend sur le réseau Docker interne. Cloudflare Tunnel fournit le transport HTTPS sortant et Cloudflare Access limite les visiteurs autorisés.
+
+La reprise après redémarrage repose sur deux enveloppes AES-256-GCM : les identifiants OAuth d’un côté et l’état de l’ordonnanceur de l’autre. Une clé de déploiement d’au moins 32 caractères est dérivée en clé de chiffrement de 256 bits ; chaque écriture utilise un IV aléatoire et un tag d’authentification. Les fichiers sont écrits sur un volume Docker avec remplacement atomique et ne contiennent jamais de clair. La déconnexion révoque les identifiants puis efface les deux enveloppes.
+
+Cette frontière est adaptée à un usage privé : quiconque atteint le backend partage toujours l’unique compte Gmail connecté. Cloudflare Access est donc une composante de sécurité obligatoire. Une ouverture publique nécessitera encore identité applicative, session, autorisation et stockage isolés par utilisateur.
 
 ## 4. Architecture conceptuelle
 
@@ -187,7 +195,7 @@ Le corps JSON est limité à 32 Kio et l'en-tête `X-Powered-By` est désactivé
 
 ### Absence de base de données
 
-Aucune base de données n'est utilisée en V1. Les messages ne sont pas copiés durablement et les jetons OAuth restent dans l'instance du client Google en mémoire du processus backend. Un redémarrage du serveur impose donc une nouvelle connexion.
+Aucune base de données de messages n'est utilisée. Sans configuration V8, les jetons OAuth restent en mémoire et un redémarrage impose une nouvelle connexion. En déploiement privé V8, seuls les jetons et l’état planifié sont persistés dans des enveloppes chiffrées.
 
 Cette simplicité est adaptée à un usage personnel local, mais elle implique qu'une seule identité OAuth est gérée correctement à la fois. Elle ne doit pas être étendue telle quelle à un service public ou multi-utilisateur.
 
@@ -201,7 +209,7 @@ Cette simplicité est adaptée à un usage personnel local, mais elle implique q
 4. Cette valeur est placée dans un cookie signé, `HttpOnly`, `SameSite=Lax`, valable dix minutes et `Secure` en production.
 5. Le backend redirige vers Google avec le scope `gmail.modify`, un accès hors ligne et un consentement explicite.
 6. Google redirige vers `GET /api/auth/google/callback` avec un code et le `state`.
-7. Le backend compare le `state` retourné au cookie signé, échange le code contre des jetons et les conserve en mémoire.
+7. Le backend compare le `state` retourné au cookie signé, échange le code contre des jetons et les conserve en mémoire, puis sous forme chiffrée si V8 est active.
 8. Le navigateur est redirigé vers le frontend avec un résultat synthétique dans le paramètre `auth`.
 
 Le mot de passe Gmail n'est jamais demandé ni manipulé par MailMind.
@@ -218,7 +226,7 @@ Le chargement des détails d'une page est actuellement parallélisé avec `Promi
 
 ### Déconnexion
 
-`POST /api/auth/logout` tente de révoquer les credentials auprès de Google, puis efface systématiquement l'état de connexion et les jetons en mémoire. La réponse réussie ne contient pas de corps (`204`).
+`POST /api/auth/logout` tente de révoquer les credentials auprès de Google, puis efface systématiquement l'état de connexion, les jetons en mémoire et les fichiers chiffrés V8. La réponse réussie ne contient pas de corps (`204`).
 
 ## 7. Décisions structurantes
 
@@ -226,7 +234,7 @@ Le chargement des détails d'une page est actuellement parallélisé avec `Promi
 | --- | --- | --- |
 | Scope `gmail.modify` | Permettre le label réversible | Les routes applicatives restent limitées à ajouter/retirer le label MailMind |
 | Appels Gmail côté backend | Ne jamais exposer les jetons au navigateur | Le frontend manipule seulement des objets normalisés |
-| Jetons en mémoire | Réduire la persistance de données sensibles en V1 | Reconnexion après redémarrage ; un seul utilisateur à la fois |
+| Persistance OAuth optionnelle et chiffrée | Permettre la reprise du déploiement privé V8 | Toujours un seul utilisateur à la fois ; clé externe indispensable |
 | Aucune base de données | Éviter le stockage inutile avant qu'un besoin réel existe | Pas d'historique, de règles persistantes ni d'apprentissage |
 | Métadonnées Gmail uniquement | Limiter l'exposition du contenu | Le corps complet et les pièces jointes ne sont pas récupérés |
 | Recherche locale | Offrir un filtrage immédiat sans requête supplémentaire | La recherche couvre uniquement les pages déjà chargées |
@@ -443,7 +451,7 @@ L'IA recommande ; elle ne déclenche pas seule une action destructive.
 - notifier les cas ambigus et permettre l'interruption immédiate ;
 - garantir audit, idempotence, reprise sur erreur et récupération.
 
-L’état actuel couvre les lots contrôlés déclenchés par l’utilisateur, l’audit local, l’arrêt, l’idempotence et la reprise manuelle. Une simulation quotidienne en mémoire peut fonctionner sans onglet ouvert tant que le backend reste actif. L’ordonnancement durable après redémarrage reste conditionné par une architecture de secrets, de sessions et de persistance adaptée.
+L’état actuel couvre les lots contrôlés déclenchés par l’utilisateur, l’audit local, l’arrêt, l’idempotence et la reprise manuelle. Une simulation quotidienne peut fonctionner sans onglet ouvert ; V8 permet sa reprise chiffrée après redémarrage pour l’installation privée mono-utilisateur. Un ordonnancement public ou distribué reste hors périmètre.
 
 ## 13. Principes de conception durables
 

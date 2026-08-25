@@ -6,7 +6,7 @@ MailMind est une application web personnelle qui connecte Gmail à une interface
 
 - connexion Google OAuth 2.0 avec validation de l’état ;
 - accès Gmail limité au scope `gmail.modify`, nécessaire pour lire les messages et gérer le label réversible ;
-- jetons OAuth conservés uniquement en mémoire côté serveur ;
+- jetons OAuth en mémoire en local, ou chiffrés sur volume persistant avec le déploiement privé V8 ;
 - liste paginée des messages et recherche locale ;
 - interface responsive installable comme PWA ;
 - thème clair ou sombre, initialisé selon le système puis mémorisé dans le navigateur ;
@@ -179,18 +179,18 @@ frontend/  React + Vite + PWA
 backend/   Express + Google OAuth2 + Gmail API
 ```
 
-Les appels Gmail passent exclusivement par le backend. Le frontend ne reçoit jamais les jetons Google. Dans cette V1 sans base de données, une relance du backend demande simplement de reconnecter Gmail.
+Les appels Gmail passent exclusivement par le backend. Le frontend ne reçoit jamais les jetons Google. En développement sans persistance V8, une relance du backend demande simplement de reconnecter Gmail.
 
 ## Sécurité et limites de la V1
 
 - Le scope demandé est `gmail.modify`, classé restreint par Google. En mode test personnel, seul un utilisateur test explicitement autorisé peut consentir.
 - Les seules mutations implémentées ajoutent ou retirent `MailMind/Quarantine`. Aucune route de suppression, corbeille, envoi ou modification de contenu n’existe.
-- Les jetons vivent uniquement en mémoire et disparaissent au redémarrage.
-- L’application est conçue pour un usage personnel local. Avant un déploiement public, ajoutez une session persistante chiffrée, HTTPS, une politique d’accès et une procédure de rotation des secrets.
+- Sans les variables V8, les jetons vivent uniquement en mémoire et disparaissent au redémarrage. Le kit privé les chiffre sur un volume persistant.
+- L’application reste mono-utilisateur. Cloudflare Access est requis pour le déploiement privé ; une ouverture publique exige encore des sessions et données isolées par utilisateur.
 
 ## Roadmap
 
-Les versions V1 à V7 sont disponibles : Gmail, classification prudente, dashboard, règles personnalisées, assistant IA locale à la demande, apprentissage à partir des corrections et agent autonome contrôlé. La V7 permet de simuler puis d’autoriser un lot de labels de quarantaine réversibles selon un seuil et des catégories explicites. Elle produit des rapports exportables sans contenu d’e-mail. Toute action destructive reste désactivée.
+Les versions V1 à V8 sont disponibles : Gmail, classification prudente, dashboard, règles personnalisées, assistant IA locale à la demande, apprentissage, agent autonome contrôlé et déploiement privé chiffré. Toute action destructive reste désactivée.
 
 ## Agent contrôlé V7
 
@@ -200,10 +200,23 @@ L’agent peut uniquement ajouter `MailMind/Quarantine`. Il ignore les messages 
 
 ### Planification V7.1
 
-La vue **Agent contrôlé** permet aussi d’activer une simulation quotidienne à une heure locale et pour un lot de 10, 20 ou 50 messages. Cette tâche est exécutée par le backend : elle peut donc continuer si l’onglet ou le navigateur est fermé, à condition que `npm run dev` reste lancé et que la connexion Gmail en mémoire soit encore valide. Elle ne pose jamais de label et produit uniquement un rapport anonymisé à valider manuellement.
+La vue **Agent contrôlé** permet aussi d’activer une simulation quotidienne à une heure locale et pour un lot de 10, 20 ou 50 messages. Cette tâche est exécutée par le backend : elle peut donc continuer si l’onglet ou le navigateur est fermé. Elle ne pose jamais de label et produit uniquement un rapport anonymisé à valider manuellement.
 
-Cette planification locale n’est pas durable : sa configuration et ses 20 derniers rapports disparaissent au redémarrage du backend ou à la déconnexion. Une planification de production persistante nécessitera toujours une base de données, un stockage chiffré des jetons OAuth, des sessions isolées par utilisateur et un ordonnanceur durable.
+En développement local sans V8, la configuration et les 20 derniers rapports disparaissent au redémarrage. Le déploiement privé V8 les chiffre sur le volume Docker ; la déconnexion les efface volontairement. Une planification multi-utilisateur nécessiterait toujours une base et des sessions isolées.
 
 ### Centre d’activité V7.2
 
 Le centre d’activité réunit les simulations manuelles, les simulations planifiées et les lots contrôlés. Il affiche les volumes analysés et exécutés, permet de filtrer les dix rapports les plus récents et d’exporter un rapport ou l’historique complet en JSON. L’agrégation déduplique les rapports par identifiant et conserve leur ordre chronologique. Les exports restent minimisés : aucun sujet, expéditeur, extrait ou identifiant Gmail n’y est ajouté.
+
+## Déploiement privé V8
+
+La V8 fournit un déploiement Docker mono-utilisateur derrière un domaine HTTPS et Cloudflare Access. Nginx sert la PWA et relaie `/api` vers un backend non exposé directement. Les jetons OAuth Google et l’état de la planification sont chiffrés en AES-256-GCM sur un volume Docker persistant. L’interface indique « Déploiement privé V8 » lorsque cette persistance est réellement active.
+
+```powershell
+.\deploy\initialize-deployment.ps1 -PublicUrl https://mailmind.votre-domaine.com
+# Complétez GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET dans .env.deploy
+.\deploy\mailmind.ps1 config
+.\deploy\mailmind.ps1 up
+```
+
+MailMind écoute uniquement sur `127.0.0.1:8080`. Publiez cette adresse avec Cloudflare Tunnel et protégez le domaine avec Cloudflare Access. La procédure complète est décrite dans `MM_deploy.md`. Cette V8 reste privée et mono-utilisateur : elle ne constitue pas une architecture SaaS publique.
